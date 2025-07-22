@@ -8,8 +8,11 @@
   },
   "dependencies": {
     "body-parser": "^2.0.2",
+    "connect-pg-simple": "^9.0.1",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "express-rate-limit": "^7.3.1",
+    "express-session": "^1.18.0",
     "node-fetch": "^2.7.0",
     "pg": "^8.11.3"
   },
