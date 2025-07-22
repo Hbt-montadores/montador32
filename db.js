@@ -6,7 +6,7 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }            // exigido no Render Free
 });
 
-// Função auto-executável para garantir que as tabelas existam
+// Função auto-executável para garantir que TODAS as tabelas existam
 (async () => {
   try {
     // Tabela 1: Gerenciada pelos webhooks da Eduzz
@@ -30,7 +30,40 @@ const pool = new Pool({
         created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
       );
     `);
-    console.log('✔️ Tabela "access_control" para gerenciamento manual pronta.');
+    console.log('✔️ Tabela "access_control" pronta.');
+
+    // Tabela 3: Para armazenar as sessões de login (CORREÇÃO DO BUG)
+    // Código tirado da documentação oficial do connect-pg-simple
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "user_sessions" (
+        "sid" varchar NOT NULL COLLATE "default",
+        "sess" json NOT NULL,
+        "expire" timestamp(6) NOT NULL
+      )
+      WITH (OIDS=FALSE);
+      
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint 
+            WHERE conname = 'session_pkey' AND conrelid = (SELECT oid FROM pg_class WHERE relname = 'user_sessions')
+        ) THEN
+            ALTER TABLE "user_sessions" ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE;
+        END IF;
+      END;
+      $$;
+      
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_class WHERE relname = 'IDX_session_expire' AND relkind = 'i'
+        ) THEN
+            CREATE INDEX "IDX_session_expire" ON "user_sessions" ("expire");
+        END IF;
+      END;
+      $$;
+    `);
+    console.log('✔️ Tabela "user_sessions" para sessões pronta.');
 
   } catch (err) {
     console.error('❌ Erro ao criar as tabelas:', err);
@@ -79,9 +112,9 @@ async function getManualPermission(email) {
   return rows[0]?.permission || null;
 }
 
-// Exportamos as funções que o server.js precisará, substituindo a antiga 'isPaid'
+// Exportamos as funções que o server.js precisará
 module.exports = {
-  pool, // Exportar a pool para o express-session
+  pool,
   markStatus,
   getCustomerStatus,
   getManualPermission
