@@ -1,0 +1,19 @@
+{
+  "name": "montador-de-sermoes",
+  "version": "1.0.0",
+  "description": "Aplicação para montar sermões com autenticação básica.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "body-parser": "^2.0.2",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "node-fetch": "^2.7.0"
+  },
+  "engines": {
+    "node": "14.x"
+  },
+  "license": "MIT"
+}

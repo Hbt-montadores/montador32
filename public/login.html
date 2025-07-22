@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Montador de Sermões 3.0</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <img src="https://cdn.glitch.global/db74bd9b-d683-421c-9223-f55b917c9dce/logo.png?v=1734385573934" alt="Logo do Montador de Sermões 3.0" class="logo">
+    </header>
+
+    <h1>Montador de Sermões 3.0</h1>
+
+    <div id="login-container">
+        <form id="login-form" action="/login" method="POST">
+            <label for="password" class="input-label">Digite a senha:</label>
+            <input
+                type="text" <!-- MUDADO de "password" para "text" para visualização -->
+                id="password"
+                name="password"
+                class="input-field password-input-large" <!-- Adicionada classe para estilo específico -->
+                placeholder="Senha de 6 dígitos"
+                maxlength="6"
+                pattern="[0-9]*"
+                inputmode="numeric"
+                autocomplete="off" <!-- Para evitar sugestões que atrapalhem a visualização -->
+                required
+            >
+            <button type="submit" id="login-button">Entrar</button>
+        </form>
+        <!-- A mensagem de erro agora é tratada pelo backend com uma página HTML completa -->
+        <!-- <div id="error-message" class="error-message" style="display: none;">Senha incorreta. Tente novamente.</div> -->
+    </div>
+
+    <!-- Se você tiver um login.js, certifique-se de que ele não está mais tentando manipular #error-message
+         ou que ele é compatível com a nova forma de feedback de erro do backend.
+         Para este exemplo, vou assumir que não há um JS do lado do cliente manipulando o envio do formulário
+         de forma a impedir a resposta completa do servidor. -->
+    <!-- <script src="login.js"></script> -->
+</body>
+</html>

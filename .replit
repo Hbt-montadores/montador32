@@ -1,0 +1,24 @@
+# Arquivo .replit — versão completa e funcional
+entrypoint = "server.js" # era index.js
+language = "nodejs"
+
+modules = ["nodejs-22"] # usa runtime Node 22 (compatível com Replit)
+
+hidden = [".config", "package-lock.json"]
+
+[gitHubImport]
+requiredFiles = [".replit", "replit.nix", "package.json", "package-lock.json"]
+
+[nix]
+channel = "stable-24_11"
+packages = ["unzip"]     # você instalou unzip
+
+[deployment]
+# usa o script do package.json → "start": "node server.js"
+run = ["npm", "start"]
+deploymentTarget = "autoscale"
+ignorePorts = false
+
+[[ports]]
+localPort = 3000
+externalPort = 80

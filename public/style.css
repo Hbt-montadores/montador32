@@ -1,0 +1,134 @@
+/* Estilos gerais */
+body {
+    font-family: Arial, sans-serif;
+    background-color: #E3F2FD;
+    color: #0D47A1;
+    margin: 0;
+    padding: 20px;
+    text-align: center;
+}
+
+/* Logo */
+header .logo {
+    width: 100%;
+    max-height: 150px;
+    object-fit: contain;
+    margin-bottom: 20px;
+}
+
+/* Título principal */
+h1 {
+    color: #0D47A1;
+    font-size: 2.5em;
+    margin-bottom: 30px;
+}
+
+/* Container do formulário */
+#form-container, #options-container, #login-container { /* Adicionado #login-container aqui */
+    background-color: #FFFFFF;
+    padding: 30px;
+    border-radius: 15px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    max-width: 500px;
+    margin: 0 auto;
+    text-align: left;
+}
+
+/* Rótulo do campo de tema */
+.input-label {
+    font-size: 1.5em;
+    font-weight: bold;
+    margin-bottom: 10px;
+    display: block;
+    color: #0D47A1;
+}
+
+/* Campo de entrada */
+.input-field {
+    width: calc(100% - 4px); /* Ajustar largura para alinhar com o fundo branco */
+    padding: 15px;
+    margin-bottom: 20px;
+    border: 2px solid #0D47A1;
+    border-radius: 8px;
+    font-size: 1.2em;
+    color: #0D47A1;
+    box-sizing: border-box; /* Garante que a borda faça parte do tamanho total */
+}
+
+/* Botões gerais */
+button {
+    background-color: #1565C0;
+    color: #fff;
+    padding: 15px;
+    font-size: 1.4em;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    width: 100%;
+    margin: 10px 0;
+    display: block;
+}
+
+button:hover {
+    background-color: #1E88E5;
+}
+
+/* Tela de carregamento com spinner */
+.loading-screen {
+    font-size: 1.6em;
+    color: #1565C0;
+    margin-top: 50px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.spinner {
+    border: 8px solid #E3F2FD;
+    border-top: 8px solid #1565C0;
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    animation: spin 1s linear infinite;
+    margin-bottom: 20px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Sermão gerado */
+.sermon-content {
+    white-space: normal;
+    line-height: 1.8;
+    font-size: 1.5em;
+    color: #0D47A1;
+    background-color: #FFFFFF;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    margin: 20px auto;
+    max-width: 800px;
+    text-align: left;
+}
+
+/* Estilos para o campo de senha grande */
+.password-input-large {
+    font-size: 3em !important; /* Tamanho da fonte bem grande */
+    text-align: center; /* Centralizar o texto dentro do campo */
+    padding: 20px 10px !important; /* Mais padding vertical */
+    letter-spacing: 0.1em; /* Espaçamento entre os caracteres para melhor visualização */
+    height: auto !important; /* Ajustar altura automaticamente */
+}
+
+/* Mensagem de erro (se ainda for usada no frontend, mas no caso atual, o backend envia uma página) */
+.error-message {
+    color: #D32F2F; /* Cor vermelha para erro */
+    background-color: #FFCDD2; /* Fundo vermelho claro */
+    border: 1px solid #D32F2F;
+    padding: 10px;
+    border-radius: 5px;
+    margin-top: 15px;
+    text-align: center;
+}
