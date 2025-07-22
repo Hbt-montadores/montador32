@@ -1,26 +1,42 @@
-document.addEventListener('DOMContentLoaded', () => {
-    // Ajustar dinamicamente o tamanho do logo se necessário
-    const logo = document.querySelector('.logo');
-    const loginContainer = document.getElementById('login-container');
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- MUDANÇA: Título atualizado para 3.2 -->
+    <title>Login - Montador de Sermões 3.2</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <!-- MUDANÇA: Texto alternativo do logo atualizado para 3.2 -->
+        <img src="https://cdn.glitch.global/db74bd9b-d683-421c-9223-f55b917c9dce/logo.png?v=1734385573934" alt="Logo do Montador de Sermões 3.2" class="logo">
+    </header>
 
-    // Ajusta o tamanho do logo se a tela for muito pequena
-    if (window.innerWidth < 400) {
-        logo.style.width = '60px';
-        logo.style.marginBottom = '5px';
-    }
+    <!-- MUDANÇA: Título principal atualizado para 3.2 -->
+    <h1>Montador de Sermões 3.2</h1>
 
-    // Centralizar o login container
-    loginContainer.style.marginTop = `${(window.innerHeight - loginContainer.offsetHeight) / 4}px`;
+    <div id="login-container">
+        <!-- MUDANÇA: Todo o formulário foi reestruturado para e-mail -->
+        <form id="login-form" action="/login" method="POST">
+            <label for="email" class="input-label">Digite seu e-mail de compra:</label>
+            <input
+                type="email"
+                id="email"
+                name="email"
+                class="input-field" <!-- A classe de senha grande foi removida para um estilo padrão -->
+                placeholder="seu.email@exemplo.com"
+                autocomplete="email" <!-- Melhora a usabilidade sugerindo o e-mail -->
+                required
+            >
+            <button type="submit" id="login-button">Entrar</button>
+        </form>
+        <!-- A mensagem de erro agora é tratada pelo backend com uma página HTML completa -->
+        <!-- <div id="error-message" class="error-message" style="display: none;">Senha incorreta. Tente novamente.</div> -->
+    </div>
 
-    // Adicionar evento ao formulário de login
-    const loginForm = document.getElementById('login-form');
-    loginForm.addEventListener('submit', (event) => {
-        const passwordInput = document.getElementById('password').value;
-
-        // Exemplo de validação simples antes do envio
-        if (passwordInput.length < 6) {
-            event.preventDefault();
-            alert('A senha deve ter pelo menos 6 caracteres.');
-        }
-    });
-});
+    <!-- MUDANÇA IMPORTANTE: A linha abaixo que chama o 'login.js' foi removida -->
+    <!-- Ela foi removida porque o script 'login.js' ainda procura pelo campo de senha e causaria erros. -->
+    
+</body>
+</html>
