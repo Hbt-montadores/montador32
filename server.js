@@ -20,6 +20,8 @@ const {
 const app = express();
 const port = process.env.PORT || 3000;
 
+app.set('trust proxy', 1); // Essencial para o rate-limit e logs funcionarem corretamente no Render
+
 // --- 2. MIDDLEWARES (Configurações que rodam em todas as requisições) ---
 
 app.use(express.static(path.join(__dirname, "public")));
