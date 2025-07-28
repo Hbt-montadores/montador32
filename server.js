@@ -1,4 +1,4 @@
-// server.js - Versão 3.2 Final (Fase 1) com Webhook Robusto e Multi-Produto
+// server.js - Versão 3.2.1 com Rota de Admin para Visualização
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -14,10 +14,10 @@ const { pool, markStatus, getCustomerStatus, getManualPermission } = require('./
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.set('trust proxy', 1); // Essencial para o rate-limit funcionar corretamente no Render
+app.set('trust proxy', 1);
 
 // --- 2. MIDDLEWARES (Segurança e Sessão) ---
-
+// ... (Toda a seção de middlewares permanece a mesma) ...
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/healthz", (req, res) => res.status(200).send("OK"));
 app.use(express.urlencoded({ extended: true }));
@@ -47,8 +47,9 @@ function requireLogin(req, res, next) {
   else { return res.redirect('/'); }
 }
 
-// --- 3. ROTAS PÚBLICAS (Login e Webhook) ---
 
+// --- 3. ROTAS PÚBLICAS (Login e Webhook) ---
+// ... (As rotas de login, logout e webhook permanecem as mesmas) ...
 const ALLOW_ANYONE = process.env.ALLOW_ANYONE === "true";
 
 app.get("/", (req, res) => { res.sendFile(path.join(__dirname, "public", "login.html")); });
@@ -103,25 +104,18 @@ app.post("/login", loginLimiter, async (req, res) => {
     }
 });
 
-// ROTA DE WEBHOOK FINAL E FUNCIONAL
 app.post("/eduzz/webhook", async (req, res) => {
   console.log("--- Webhook Eduzz Recebido ---");
   const { api_key, product_cod, cus_email, event_name } = req.body;
-
-  // 1. Verificação de Segurança (API Key)
   if (api_key !== process.env.EDUZZ_API_KEY) {
     console.warn(`[Webhook-Segurança] API Key inválida recebida.`);
     return res.status(403).send("API Key inválida.");
   }
-
-  // 2. Verificação de Produto
   const validProductIds = (process.env.EDUZZ_PRODUCT_IDS || "").split(',').map(id => id.trim());
   if (!validProductIds.includes(product_cod.toString())) {
     console.log(`[Webhook-Info] Ignorando webhook para produto não relacionado: ${product_cod}`);
     return res.status(200).send("Webhook ignorado (produto não corresponde).");
   }
-
-  // 3. Mapeamento de Status com base no event_name
   let status;
   switch (event_name) {
     case 'invoice_paid':
@@ -133,14 +127,13 @@ app.post("/eduzz/webhook", async (req, res) => {
       break;
     case 'contract_canceled':
     case 'invoice_refunded':
+    case 'invoice_expired':
       status = 'canceled';
       break;
     default:
       console.log(`[Webhook-Info] Ignorando evento não mapeado: ${event_name}`);
       return res.status(200).send("Evento não mapeado.");
   }
-
-  // 4. Atualização no Banco de Dados
   if (cus_email && status) {
     try {
       await markStatus(cus_email, status);
@@ -156,9 +149,57 @@ app.post("/eduzz/webhook", async (req, res) => {
   }
 });
 
+// --- ROTA DE ADMINISTRAÇÃO SECRETA E TEMPORÁRIA ---
+app.get("/admin/view-data", async (req, res) => {
+    // 1. Segurança: Verifica se uma chave secreta foi passada na URL
+    const { key } = req.query;
+    if (key !== process.env.ADMIN_KEY) {
+        return res.status(403).send("<h1>Acesso Negado</h1><p>Chave de acesso inválida.</p>");
+    }
+
+    try {
+        // 2. Lê os dados da tabela customers
+        const { rows } = await pool.query('SELECT * FROM customers ORDER BY updated_at DESC');
+
+        // 3. Monta uma página HTML simples para exibir os dados
+        let html = `
+            <style>
+                body { font-family: sans-serif; }
+                table { border-collapse: collapse; width: 100%; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; }
+            </style>
+            <h1>Visualização de Clientes (${rows.length} registros)</h1>
+            <table>
+                <tr>
+                    <th>Email</th>
+                    <th>Status</th>
+                    <th>Última Atualização</th>
+                </tr>
+        `;
+
+        rows.forEach(customer => {
+            html += `
+                <tr>
+                    <td>${customer.email}</td>
+                    <td>${customer.status}</td>
+                    <td>${new Date(customer.updated_at).toLocaleString('pt-BR')}</td>
+                </tr>
+            `;
+        });
+
+        html += '</table>';
+        res.send(html);
+
+    } catch (error) {
+        console.error("Erro ao buscar dados de admin:", error);
+        res.status(500).send("<h1>Erro ao buscar dados</h1>");
+    }
+});
+
 
 // --- 4. ROTAS PROTEGIDAS (Apenas para usuários logados) ---
-
+// ... (Suas rotas /app e /api/next-step permanecem as mesmas) ...
 app.get("/app", requireLogin, (req, res) => {
     res.sendFile(path.join(__dirname, "public", "app.html"));
 });
@@ -240,6 +281,7 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
         return res.status(500).json({ error: "Erro ao gerar sermão após várias tentativas." });
     }
 });
+
 
 // --- 5. INICIALIZAÇÃO DO SERVIDOR ---
 app.listen(port, () => {
