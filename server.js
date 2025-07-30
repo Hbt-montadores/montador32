@@ -1,7 +1,6 @@
-// server.js - Versão 3.2.2 com Correção de Fuso Horário na Visualização
+// server.js - Versão 3.2.3 com Correção de Fuso Horário no Lado do App
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
-// ... (Toda a parte de importações permanece a mesma) ...
 require("dotenv").config();
 const express = require("express");
 const path = require("path");
@@ -18,7 +17,6 @@ const port = process.env.PORT || 3000;
 app.set('trust proxy', 1);
 
 // --- 2. MIDDLEWARES (Segurança e Sessão) ---
-// ... (Toda a seção de middlewares permanece a mesma) ...
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/healthz", (req, res) => res.status(200).send("OK"));
 app.use(express.urlencoded({ extended: true }));
@@ -49,7 +47,6 @@ function requireLogin(req, res, next) {
 }
 
 // --- 3. ROTAS PÚBLICAS (Login e Webhook) ---
-// ... (As rotas de login, logout e webhook permanecem as mesmas) ...
 const ALLOW_ANYONE = process.env.ALLOW_ANYONE === "true";
 
 app.get("/", (req, res) => { res.sendFile(path.join(__dirname, "public", "login.html")); });
@@ -156,15 +153,8 @@ app.get("/admin/view-data", async (req, res) => {
         return res.status(403).send("<h1>Acesso Negado</h1><p>Chave de acesso inválida.</p>");
     }
     try {
-        // MUDANÇA AQUI: Adicionamos a conversão de fuso horário na consulta SQL
-        const query = `
-            SELECT 
-                email, 
-                status, 
-                updated_at AT TIME ZONE 'America/Sao_Paulo' AS horario_brasilia 
-            FROM customers 
-            ORDER BY updated_at DESC
-        `;
+        // MUDANÇA: Voltamos à consulta simples, sem conversão de fuso horário no SQL.
+        const query = 'SELECT email, status, updated_at FROM customers ORDER BY updated_at DESC';
         const { rows } = await pool.query(query);
 
         let html = `
@@ -176,11 +166,14 @@ app.get("/admin/view-data", async (req, res) => {
             <table><tr><th>Email</th><th>Status</th><th>Última Atualização (Brasília)</th></tr>`;
 
         rows.forEach(customer => {
+            // MUDANÇA: Fazemos a conversão da data UTC para o horário de Brasília aqui no código.
+            const dataBrasilia = new Date(customer.updated_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+            
             html += `
                 <tr>
                     <td>${customer.email}</td>
                     <td>${customer.status}</td>
-                    <td>${new Date(customer.horario_brasilia).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</td>
+                    <td>${dataBrasilia}</td>
                 </tr>`;
         });
 
@@ -193,7 +186,6 @@ app.get("/admin/view-data", async (req, res) => {
 });
 
 // --- 4. ROTAS PROTEGIDAS (Apenas para usuários logados) ---
-// ... (Suas rotas /app e /api/next-step permanecem as mesmas) ...
 app.get("/app", requireLogin, (req, res) => {
     res.sendFile(path.join(__dirname, "public", "app.html"));
 });
