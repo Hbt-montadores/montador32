@@ -1,4 +1,4 @@
-// server.js - Versão Final 4.0 (Fase 1) com Lógica Completa
+// server.js - Versão Final 4.2 com Rota de Importação via CSV
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -8,6 +8,8 @@ const fetch = require("node-fetch");
 const session = require("express-session");
 const PgStore = require("connect-pg-simple")(session);
 const rateLimit = require('express-rate-limit');
+const fs = require('fs');
+const csv = require('csv-parser');
 
 const { pool, markStatus, getCustomerRecordByEmail, getCustomerRecordByPhone, getManualPermission } = require('./db');
 
@@ -229,6 +231,84 @@ app.get("/admin/view-data", async (req, res) => {
         console.error("Erro ao buscar dados de admin:", error);
         res.status(500).send("<h1>Erro ao buscar dados</h1>");
     }
+});
+
+app.get("/admin/import-from-csv", async (req, res) => {
+    const { key, plan_type } = req.query;
+    if (key !== process.env.ADMIN_KEY) {
+        return res.status(403).send("<h1>Acesso Negado</h1><p>Chave de acesso inválida.</p>");
+    }
+    if (!['anual', 'vitalicio'].includes(plan_type)) {
+        return res.status(400).send("<h1>Erro</h1><p>Você precisa especificar o tipo de plano na URL. Adicione '?plan_type=anual' ou '?plan_type=vitalicio' ao final do endereço.</p>");
+    }
+
+    const CSV_FILE_PATH = path.join(__dirname, 'lista-clientes.csv');
+    if (!fs.existsSync(CSV_FILE_PATH)) {
+        return res.status(404).send("<h1>Erro</h1><p>Arquivo 'lista-clientes.csv' não encontrado na raiz do projeto.</p>");
+    }
+
+    const clientsToImport = [];
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.write(`<h1>Iniciando importação para plano: ${plan_type}...</h1>`);
+
+    fs.createReadStream(CSV_FILE_PATH)
+      .pipe(csv({ separator: ';' }))
+      .on('data', (row) => {
+        const email = row['Cliente / E-mail'];
+        const name = row['Cliente / Nome'] || row['Cliente / Razão-Social'];
+        const phone = row['Cliente / Fones'];
+        const purchaseDateStr = row['Data de Criação'];
+        const status = row['Status'];
+
+        if (email && purchaseDateStr && status && status.toLowerCase() === 'paga') {
+          clientsToImport.push({ email, name, phone, purchaseDateStr });
+        }
+      })
+      .on('end', async () => {
+        res.write(`<p>Leitura do CSV concluída. ${clientsToImport.length} clientes válidos encontrados.</p>`);
+        if (clientsToImport.length === 0) return res.end('<p>Nenhum cliente para importar. Encerrando.</p>');
+
+        const client = await pool.connect();
+        try {
+            res.write('<p>Iniciando transação com o banco de dados...</p>');
+            await client.query('BEGIN');
+
+            for (const [index, customerData] of clientsToImport.entries()) {
+                if (plan_type === 'anual') {
+                    const [datePart, timePart] = customerData.purchaseDateStr.split(' ');
+                    const [day, month, year] = datePart.split('/');
+                    const purchaseDate = new Date(`${year}-${month}-${day}T${timePart || '00:00:00'}`);
+                    const expirationDate = new Date(purchaseDate);
+                    expirationDate.setDate(expirationDate.getDate() + 365);
+                    
+                    const query = `
+                        INSERT INTO customers (email, name, phone, status, expires_at, updated_at)
+                        VALUES ($1, $2, $3, 'paid', $4, NOW())
+                        ON CONFLICT (email) DO UPDATE SET 
+                            name = COALESCE(EXCLUDED.name, customers.name),
+                            phone = COALESCE(EXCLUDED.phone, customers.phone),
+                            expires_at = EXCLUDED.expires_at,
+                            updated_at = NOW();`;
+                    await client.query(query, [customerData.email.toLowerCase(), customerData.name, customerData.phone, expirationDate.toISOString()]);
+                } else if (plan_type === 'vitalicio') {
+                    const query = `
+                        INSERT INTO access_control (email, permission, reason)
+                        VALUES ($1, 'allow', 'Importado via CSV - Vitalício')
+                        ON CONFLICT (email) DO NOTHING;`;
+                    await client.query(query, [customerData.email.toLowerCase()]);
+                }
+            }
+
+            await client.query('COMMIT');
+            res.end(`<h2>✅ Sucesso!</h2><p>${clientsToImport.length} clientes foram importados/atualizados para o plano ${plan_type}.</p>`);
+        } catch (e) {
+            await client.query('ROLLBACK');
+            res.end(`<h2>❌ ERRO!</h2><p>Ocorreu um problema durante a importação. Nenhuma alteração foi salva. Verifique os logs do servidor.</p>`);
+            console.error(e);
+        } finally {
+            client.release();
+        }
+      });
 });
 
 app.get("/app", requireLogin, (req, res) => {
