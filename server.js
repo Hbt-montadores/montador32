@@ -1,4 +1,4 @@
-// server.js - Versão Final 4.2 com Rota de Importação via CSV
+// server.js - Versão Final 5.0 com Editor de Clientes
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -48,7 +48,7 @@ function requireLogin(req, res, next) {
   else { return res.redirect('/'); }
 }
 
-// --- 3. ROTAS PÚBLICAS (Login e Webhook) ---
+// --- 3. ROTAS PÚBLICAS E DE ADMINISTRAÇÃO ---
 const ALLOW_ANYONE = process.env.ALLOW_ANYONE === "true";
 
 app.get("/", (req, res) => { res.sendFile(path.join(__dirname, "public", "login.html")); });
@@ -193,6 +193,7 @@ app.post("/eduzz/webhook", async (req, res) => {
   }
 });
 
+// ROTA DE VISUALIZAÇÃO DE CLIENTES DA EDUZZ
 app.get("/admin/view-data", async (req, res) => {
     const { key } = req.query;
     if (key !== process.env.ADMIN_KEY) {
@@ -206,9 +207,11 @@ app.get("/admin/view-data", async (req, res) => {
             <style>
                 body { font-family: sans-serif; } table { border-collapse: collapse; width: 100%; }
                 th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }
+                .actions a { margin-right: 10px; }
             </style>
             <h1>Visualização de Clientes (${rows.length} registros)</h1>
-            <table><tr><th>Email</th><th>Nome</th><th>Telefone</th><th>Status</th><th>Última Atualização (Brasília)</th><th>Expira em (Brasília)</th></tr>`;
+            <p><a href="/admin/view-access-control?key=${key}">Ver Lista de Acesso Manual (Vitalícios)</a></p>
+            <table><tr><th>Email</th><th>Nome</th><th>Telefone</th><th>Status</th><th>Última Atualização (Brasília)</th><th>Expira em (Brasília)</th><th>Ações</th></tr>`;
 
         rows.forEach(customer => {
             const dataAtualizacao = customer.updated_at ? new Date(customer.updated_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'N/A';
@@ -222,6 +225,7 @@ app.get("/admin/view-data", async (req, res) => {
                     <td>${customer.status}</td>
                     <td>${dataAtualizacao}</td>
                     <td>${dataExpiracao}</td>
+                    <td class="actions"><a href="/admin/edit-customer?email=${encodeURIComponent(customer.email)}&key=${key}">[Editar]</a></td>
                 </tr>`;
         });
 
@@ -229,6 +233,123 @@ app.get("/admin/view-data", async (req, res) => {
         res.send(html);
     } catch (error) {
         console.error("Erro ao buscar dados de admin:", error);
+        res.status(500).send("<h1>Erro ao buscar dados</h1>");
+    }
+});
+
+// NOVA ROTA PARA EXIBIR O FORMULÁRIO DE EDIÇÃO
+app.get("/admin/edit-customer", async (req, res) => {
+    const { key, email } = req.query;
+    if (key !== process.env.ADMIN_KEY) { return res.status(403).send("Acesso Negado"); }
+    if (!email) { return res.status(400).send("E-mail do cliente não fornecido."); }
+
+    try {
+        const customer = await getCustomerRecordByEmail(email);
+        if (!customer) { return res.status(404).send("Cliente não encontrado."); }
+
+        // Formata a data de expiração para o formato 'YYYY-MM-DDTHH:mm' que o input 'datetime-local' entende
+        const expires_at_value = customer.expires_at 
+            ? new Date(new Date(customer.expires_at).getTime() - (3 * 60 * 60 * 1000)).toISOString().slice(0, 16)
+            : "";
+
+        // Monta o HTML do formulário
+        res.send(`
+            <style>
+                body { font-family: sans-serif; max-width: 600px; margin: 40px auto; }
+                form div { margin-bottom: 15px; }
+                label { display: block; margin-bottom: 5px; }
+                input, select { width: 100%; padding: 8px; font-size: 1em; }
+                button { padding: 10px 15px; font-size: 1em; cursor: pointer; }
+            </style>
+            <h1>Editar Cliente: ${customer.email}</h1>
+            <form action="/admin/update-customer" method="POST">
+                <input type="hidden" name="key" value="${key}">
+                <input type="hidden" name="email" value="${customer.email}">
+
+                <div><label for="name">Nome:</label><input type="text" id="name" name="name" value="${customer.name || ''}"></div>
+                <div><label for="phone">Telefone:</label><input type="text" id="phone" name="phone" value="${customer.phone || ''}"></div>
+                
+                <div><label for="status">Status:</label>
+                    <select id="status" name="status">
+                        <option value="paid" ${customer.status === 'paid' ? 'selected' : ''}>paid</option>
+                        <option value="overdue" ${customer.status === 'overdue' ? 'selected' : ''}>overdue</option>
+                        <option value="canceled" ${customer.status === 'canceled' ? 'selected' : ''}>canceled</option>
+                    </select>
+                </div>
+
+                <div><label for="expires_at">Data de Expiração (deixe em branco para controle da Eduzz):</label>
+                <input type="datetime-local" id="expires_at" name="expires_at" value="${expires_at_value}"></div>
+                
+                <button type="submit">Salvar Alterações</button>
+            </form>
+            <br>
+            <a href="/admin/view-data?key=${key}">Voltar para a lista</a>
+        `);
+    } catch (error) {
+        console.error("Erro ao carregar formulário de edição:", error);
+        res.status(500).send("Erro interno.");
+    }
+});
+
+// NOVA ROTA PARA PROCESSAR O FORMULÁRIO DE EDIÇÃO
+app.post("/admin/update-customer", async (req, res) => {
+    const { key, email, name, phone, status, expires_at } = req.body;
+    if (key !== process.env.ADMIN_KEY) { return res.status(403).send("Acesso Negado"); }
+
+    try {
+        // Se a data de expiração for uma string vazia, converte para NULL para o banco de dados
+        const expirationDate = expires_at ? new Date(expires_at).toISOString() : null;
+
+        const query = `
+            UPDATE customers 
+            SET name = $1, phone = $2, status = $3, expires_at = $4, updated_at = NOW() 
+            WHERE email = $5
+        `;
+        await pool.query(query, [name, phone, status, expirationDate, email]);
+
+        // Redireciona de volta para a lista principal
+        res.redirect(`/admin/view-data?key=${key}`);
+    } catch (error) {
+        console.error("Erro ao atualizar cliente:", error);
+        res.status(500).send("Erro ao atualizar dados do cliente.");
+    }
+});
+
+
+app.get("/admin/view-access-control", async (req, res) => {
+    const { key } = req.query;
+    if (key !== process.env.ADMIN_KEY) {
+        return res.status(403).send("<h1>Acesso Negado</h1><p>Chave de acesso inválida.</p>");
+    }
+    try {
+        const query = 'SELECT email, permission, reason, created_at FROM access_control ORDER BY created_at DESC';
+        const { rows } = await pool.query(query);
+
+        let html = `
+            <style>
+                body { font-family: sans-serif; } table { border-collapse: collapse; width: 100%; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }
+            </style>
+            <h1>Visualização de Controle de Acesso Manual (${rows.length} registros)</h1>
+            <p><a href="/admin/view-data?key=${key}">Ver Lista de Clientes da Eduzz</a></p>
+            <table><tr><th>Email</th><th>Permissão</th><th>Motivo</th><th>Criado em (Brasília)</th></tr>`;
+
+        rows.forEach(rule => {
+            const dataCriacao = rule.created_at ? new Date(rule.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'N/A';
+            
+            html += `
+                <tr>
+                    <td>${rule.email}</td>
+                    <td>${rule.permission}</td>
+                    <td>${rule.reason || 'Não informado'}</td>
+                    <td>${dataCriacao}</td>
+                </tr>`;
+        });
+
+        html += '</table>';
+        res.send(html);
+    } catch (error) {
+        console.error("Erro ao buscar dados de controle de acesso:", error);
         res.status(500).send("<h1>Erro ao buscar dados</h1>");
     }
 });
@@ -250,6 +371,13 @@ app.get("/admin/import-from-csv", async (req, res) => {
     const clientsToImport = [];
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.write(`<h1>Iniciando importação para plano: ${plan_type}...</h1>`);
+
+    function normalizePhone(phoneString) {
+        if (!phoneString || typeof phoneString !== 'string') return null;
+        const digitsOnly = phoneString.replace(/\D/g, '');
+        if (digitsOnly.length < 8) return null;
+        return digitsOnly.slice(-9);
+    }
 
     fs.createReadStream(CSV_FILE_PATH)
       .pipe(csv({ separator: ';' }))
@@ -289,13 +417,16 @@ app.get("/admin/import-from-csv", async (req, res) => {
                             phone = COALESCE(EXCLUDED.phone, customers.phone),
                             expires_at = EXCLUDED.expires_at,
                             updated_at = NOW();`;
-                    await client.query(query, [customerData.email.toLowerCase(), customerData.name, customerData.phone, expirationDate.toISOString()]);
+                    await client.query(query, [customerData.email.toLowerCase(), customerData.name, normalizePhone(customerData.phone), expirationDate.toISOString()]);
                 } else if (plan_type === 'vitalicio') {
                     const query = `
                         INSERT INTO access_control (email, permission, reason)
                         VALUES ($1, 'allow', 'Importado via CSV - Vitalício')
                         ON CONFLICT (email) DO NOTHING;`;
                     await client.query(query, [customerData.email.toLowerCase()]);
+                }
+                 if ((index + 1) % 50 === 0) {
+                     res.write(`<p>${index + 1} de ${clientsToImport.length} clientes processados...</p>`);
                 }
             }
 
