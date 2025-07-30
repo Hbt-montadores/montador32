@@ -15,6 +15,8 @@
     "express-session": "^1.18.0",
     "node-fetch": "^2.7.0",
     "pg": "^8.11.3"
+    "csv-parser": "^3.0.0",
+```    *Lembre-se de colocar uma vírgula no final da linha anterior.* Salve o arquivo ("Commit changes").
   },
   "engines": {
     "node": "20.x"
