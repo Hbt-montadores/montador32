@@ -2,14 +2,14 @@
 const { Pool } = require('pg');
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,   // variável do Render
-  ssl: { rejectUnauthorized: false }            // exigido no Render Free
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
 });
 
-// Função auto-executável para garantir que TODAS as tabelas existam
+// Função auto-executável para garantir que TODAS as tabelas existam e estejam atualizadas
 (async () => {
   try {
-    // Tabela 1: Gerenciada pelos webhooks da Eduzz
+    // Tabela 1: Gerenciada pelos webhooks da Eduzz, agora com a coluna 'expires_at'
     await pool.query(`
       CREATE TABLE IF NOT EXISTS customers (
         id SERIAL PRIMARY KEY,
@@ -18,7 +18,11 @@ const pool = new Pool({
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
       );
     `);
-    console.log('✔️ Tabela "customers" pronta.');
+    // Comando para adicionar a coluna 'expires_at' se a tabela já existir e a coluna não
+    await pool.query(`
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP WITH TIME ZONE;
+    `);
+    console.log('✔️ Tabela "customers" pronta (com expires_at).');
 
     // Tabela 2: Para seu controle manual de acesso
     await pool.query(`
@@ -32,8 +36,7 @@ const pool = new Pool({
     `);
     console.log('✔️ Tabela "access_control" pronta.');
 
-    // Tabela 3: Para armazenar as sessões de login (CORREÇÃO DO BUG)
-    // Código tirado da documentação oficial do connect-pg-simple
+    // Tabela 3: Para armazenar as sessões de login
     await pool.query(`
       CREATE TABLE IF NOT EXISTS "user_sessions" (
         "sid" varchar NOT NULL COLLATE "default",
@@ -46,7 +49,7 @@ const pool = new Pool({
       BEGIN
         IF NOT EXISTS (
             SELECT 1 FROM pg_constraint 
-            WHERE conname = 'session_pkey' AND conrelid = (SELECT oid FROM pg_class WHERE relname = 'user_sessions')
+            WHERE conname = 'session_pkey' AND conrelid = 'user_sessions'::regclass
         ) THEN
             ALTER TABLE "user_sessions" ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE;
         END IF;
@@ -63,7 +66,7 @@ const pool = new Pool({
       END;
       $$;
     `);
-    console.log('✔️ Tabela "user_sessions" para sessões pronta.');
+    console.log('✔️ Tabela "user_sessions" pronta.');
 
   } catch (err) {
     console.error('❌ Erro ao criar as tabelas:', err);
@@ -72,31 +75,32 @@ const pool = new Pool({
 
 /**
  * Insere ou atualiza o status de um cliente (usado pelo webhook da Eduzz).
- * @param {string} email - O email do cliente.
- * @param {string} status - O status vindo da Eduzz (ex: 'paid', 'overdue', 'canceled').
+ * MUDANÇA: Agora, ele define 'expires_at' como NULL para garantir que o controle seja da Eduzz.
  */
 async function markStatus(email, status) {
   await pool.query(
-    `INSERT INTO customers (email, status)
-       VALUES ($1, $2)
+    `INSERT INTO customers (email, status, expires_at)
+       VALUES ($1, $2, NULL)
        ON CONFLICT (email) DO UPDATE SET
          status = EXCLUDED.status,
+         expires_at = NULL,
          updated_at = now();`,
     [email.toLowerCase(), status]
   );
 }
 
 /**
- * Busca o status de pagamento de um cliente na tabela 'customers'.
+ * MUDANÇA: Renomeado de getCustomerStatus para getCustomerRecord para clareza.
+ * Busca o registro completo de um cliente para verificação de login (status e data de expiração).
  * @param {string} email - O email do cliente.
- * @returns {Promise<string|null>} O status ('paid', 'overdue', etc.) ou null se não for encontrado.
+ * @returns {Promise<object|null>} O objeto do cliente completo ou null se não for encontrado.
  */
-async function getCustomerStatus(email) {
+async function getCustomerRecord(email) {
   const { rows } = await pool.query(
-    `SELECT status FROM customers WHERE email = $1`,
+    `SELECT * FROM customers WHERE email = $1`,
     [email.toLowerCase()]
   );
-  return rows[0]?.status || null;
+  return rows[0] || null;
 }
 
 /**
@@ -116,6 +120,6 @@ async function getManualPermission(email) {
 module.exports = {
   pool,
   markStatus,
-  getCustomerStatus,
+  getCustomerRecord, // MUDANÇA: Exportando a nova função renomeada
   getManualPermission
 };
