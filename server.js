@@ -1,4 +1,4 @@
-// server.js - Versão Final 3.3 com Lógica de Expiração
+// server.js - Versão Final 4.0 (Fase 1) com Lógica Completa
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -9,8 +9,7 @@ const session = require("express-session");
 const PgStore = require("connect-pg-simple")(session);
 const rateLimit = require('express-rate-limit');
 
-// MUDANÇA: Importando a função 'getCustomerRecord' em vez de 'getCustomerStatus'
-const { pool, markStatus, getCustomerRecord, getManualPermission } = require('./db');
+const { pool, markStatus, getCustomerRecordByEmail, getCustomerRecordByPhone, getManualPermission } = require('./db');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -18,7 +17,6 @@ const port = process.env.PORT || 3000;
 app.set('trust proxy', 1);
 
 // --- 2. MIDDLEWARES (Segurança e Sessão) ---
-// ... (Esta seção inteira permanece a mesma) ...
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/healthz", (req, res) => res.status(200).send("OK"));
 app.use(express.urlencoded({ extended: true }));
@@ -48,7 +46,6 @@ function requireLogin(req, res, next) {
   else { return res.redirect('/'); }
 }
 
-
 // --- 3. ROTAS PÚBLICAS (Login e Webhook) ---
 const ALLOW_ANYONE = process.env.ALLOW_ANYONE === "true";
 
@@ -62,89 +59,104 @@ app.get('/logout', (req, res) => {
   });
 });
 
-// ROTA DE LOGIN ATUALIZADA COM LÓGICA DE EXPIRAÇÃO
+const checkAccessAndLogin = (req, res, customer) => {
+    if (customer.expires_at) {
+        const agora = new Date();
+        const dataExpiracao = new Date(customer.expires_at);
+        if (agora > dataExpiracao) {
+            const expiredErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Acesso Expirado</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Acesso Expirado</h1><p>Sua assinatura anual expirou. Por favor, renove para continuar acessando.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">RENOVAR ASSINATURA</a><a href="/" class="back-link">Voltar</a></div></body></html>`;
+            return res.status(401).send(expiredErrorMessageHTML);
+        }
+    }
+
+    if (customer.status === 'paid') {
+        req.session.user = { email: customer.email, status: 'paid' };
+        return res.redirect('/app');
+    }
+    
+    const overdueErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pagamento Pendente</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Identificamos que sua assinatura está com o pagamento pendente ou foi cancelada. Clique no botão abaixo para regularizar seu acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">REGULARIZAR ACESSO</a><a href="/" class="back-link">Tentar novamente após regularizar</a></div></body></html>`;
+    return res.status(401).send(overdueErrorMessageHTML);
+};
+
 app.post("/login", loginLimiter, async (req, res) => {
     const { email } = req.body;
     if (!email) {
         return res.status(400).send("O campo de e-mail é obrigatório.");
     }
     const lowerCaseEmail = email.toLowerCase();
-
+    
     if (ALLOW_ANYONE) {
         req.session.user = { email: lowerCaseEmail, status: 'admin_test' };
         return res.redirect("/app");
     }
 
     try {
-        // HIERARQUIA DE VERIFICAÇÃO FINAL
-
-        // 1. Acesso Bloqueado Manualmente?
         const manualPermission = await getManualPermission(lowerCaseEmail);
         if (manualPermission === 'block') {
             return res.status(403).send("<h1>Acesso Bloqueado</h1><p>Este acesso foi bloqueado manualmente. Entre em contato com o suporte.</p><a href='/'>Voltar</a>");
         }
-
-        // 2. Acesso Permitido Manualmente (Vitalício)?
         if (manualPermission === 'allow') {
             req.session.user = { email: lowerCaseEmail, status: 'allowed_manual' };
             return res.redirect('/app');
         }
 
-        // 3. Verificar Cliente na Base da Eduzz
-        const customer = await getCustomerRecord(lowerCaseEmail);
+        const customer = await getCustomerRecordByEmail(lowerCaseEmail);
 
         if (customer) {
-            // 3a. O acesso do cliente expirou (para clientes anuais importados)?
-            if (customer.expires_at) {
-                const agora = new Date();
-                const dataExpiracao = new Date(customer.expires_at);
-                if (agora > dataExpiracao) {
-                    // Reutiliza a mensagem de erro de assinatura pendente
-                    const expiredErrorMessageHTML = `...`; // Seu HTML de erro aqui
-                    return res.status(401).send("<h1>Acesso Expirado</h1><p>Sua assinatura anual expirou. Por favor, renove para continuar acessando.</p><a href='/'>Voltar</a>");
-                }
-            }
-
-            // 3b. O status atual do cliente (via webhook) permite o acesso?
-            if (customer.status === 'paid') {
-                req.session.user = { email: lowerCaseEmail, status: 'paid' };
-                return res.redirect('/app');
-            }
+            return checkAccessAndLogin(req, res, customer);
+        } else {
+            const notFoundErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Erro de Login</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.input-field{width:calc(100% - 34px);padding:15px;margin-bottom:20px;border:2px solid #0D47A1;border-radius:8px;font-size:1.2em;color:#0D47A1}.action-button{background-color:#1565C0;color:#fff;padding:15px;font-size:1.4em;border:none;border-radius:8px;cursor:pointer;width:100%;display:block}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>E-mail não localizado</h1><p>Não encontramos seu cadastro. Por favor, verifique se digitou o e-mail corretamente ou tente acessar com seu número de celular.</p><form action="/login-by-phone" method="POST"><label for="phone">Celular (com DDD):</label><input type="tel" id="phone" name="phone" class="input-field" placeholder="11987654321" required><button type="submit" class="action-button">Entrar com Celular</button></form><a href="/" class="back-link">Tentar com outro e-mail</a></div></body></html>`;
+            return res.status(401).send(notFoundErrorMessageHTML);
         }
-        
-        // Se chegou até aqui, o acesso é negado (ou porque o status não é 'paid', ou porque o cliente não foi encontrado)
-        const errorMessageHTML = (customer && (customer.status === 'overdue' || customer.status === 'canceled'))
-            ? `<!DOCTYPE html>...` // Seu HTML de erro para "Pagamento Pendente"
-            : `<!DOCTYPE html>...`; // Seu HTML de erro para "E-mail não localizado"
-            
-        // (Para simplificar a visualização, colei a versão final com os HTMLs completos abaixo)
-        const finalErrorMessage = (customer && (customer.status === 'overdue' || customer.status === 'canceled'))
-            ? `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pagamento Pendente</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Identificamos que sua assinatura está com o pagamento pendente ou foi cancelada. Clique no botão abaixo para regularizar seu acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">REGULARIZAR ACESSO</a><a href="/" class="back-link">Tentar novamente após regularizar</a></div></body></html>`
-            : `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Erro de Login</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>E-mail não localizado</h1><p>Não encontramos seu cadastro. Por favor, verifique se você digitou o mesmo e-mail que usou no momento da compra.</p><a href="/" class="back-link">Tentar com outro e-mail</a></div></body></html>`;
-        
-        return res.status(401).send(finalErrorMessage);
-
     } catch (error) {
-        console.error("Erro no processo de login:", error);
+        console.error("Erro no processo de login por e-mail:", error);
         return res.status(500).send("<h1>Erro Interno</h1><p>Ocorreu um problema no servidor. Tente novamente mais tarde.</p>");
     }
 });
 
+app.post("/login-by-phone", loginLimiter, async (req, res) => {
+    const { phone } = req.body;
+    if (!phone) {
+        return res.status(400).send("O campo de celular é obrigatório.");
+    }
 
-// ... (O resto do arquivo - webhook, rota de admin, rotas protegidas - permanece exatamente o mesmo) ...
+    try {
+        const customer = await getCustomerRecordByPhone(phone);
+        
+        if (customer) {
+            const manualPermission = await getManualPermission(customer.email);
+            if (manualPermission === 'block') {
+                return res.status(403).send("<h1>Acesso Bloqueado</h1><p>Este acesso foi bloqueado manualmente. Entre em contato com o suporte.</p><a href='/'>Voltar</a>");
+            }
+            if (manualPermission === 'allow') {
+                req.session.user = { email: customer.email, status: 'allowed_manual' };
+                return res.redirect('/app');
+            }
+            return checkAccessAndLogin(req, res, customer);
+        } else {
+            const notFoundErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Erro de Login</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Celular não localizado</h1><p>Não encontramos um cadastro com este número de celular. Por favor, verifique se o número está correto ou tente acessar com seu e-mail.</p><a href="/" class="back-link">Tentar com e-mail</a></div></body></html>`;
+            return res.status(401).send(notFoundErrorMessageHTML);
+        }
+    } catch (error) {
+        console.error("Erro no processo de login por celular:", error);
+        return res.status(500).send("<h1>Erro Interno</h1><p>Ocorreu um problema no servidor. Tente novamente mais tarde.</p>");
+    }
+});
 
 app.post("/eduzz/webhook", async (req, res) => {
-  console.log("--- Webhook Eduzz Recebido ---");
-  const { api_key, product_cod, cus_email, event_name } = req.body;
+  const { api_key, product_cod, cus_email, cus_name, cus_cel, event_name } = req.body;
+  
   if (api_key !== process.env.EDUZZ_API_KEY) {
     console.warn(`[Webhook-Segurança] API Key inválida recebida.`);
     return res.status(403).send("API Key inválida.");
   }
+  
   const validProductIds = (process.env.EDUZZ_PRODUCT_IDS || "").split(',').map(id => id.trim());
   if (!validProductIds.includes(product_cod.toString())) {
     console.log(`[Webhook-Info] Ignorando webhook para produto não relacionado: ${product_cod}`);
     return res.status(200).send("Webhook ignorado (produto não corresponde).");
   }
+
   let status;
   switch (event_name) {
     case 'invoice_paid':
@@ -163,9 +175,10 @@ app.post("/eduzz/webhook", async (req, res) => {
       console.log(`[Webhook-Info] Ignorando evento não mapeado: ${event_name}`);
       return res.status(200).send("Evento não mapeado.");
   }
+
   if (cus_email && status) {
     try {
-      await markStatus(cus_email, status);
+      await markStatus(cus_email, cus_name, cus_cel, status);
       console.log(`[Webhook-Sucesso] Cliente [${cus_email}] atualizado para o status [${status}].`);
       res.status(200).send("Webhook processado com sucesso.");
     } catch (error) {
@@ -184,7 +197,7 @@ app.get("/admin/view-data", async (req, res) => {
         return res.status(403).send("<h1>Acesso Negado</h1><p>Chave de acesso inválida.</p>");
     }
     try {
-        const query = 'SELECT email, status, updated_at, expires_at FROM customers ORDER BY updated_at DESC';
+        const query = 'SELECT email, name, phone, status, updated_at, expires_at FROM customers ORDER BY updated_at DESC';
         const { rows } = await pool.query(query);
 
         let html = `
@@ -193,7 +206,7 @@ app.get("/admin/view-data", async (req, res) => {
                 th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }
             </style>
             <h1>Visualização de Clientes (${rows.length} registros)</h1>
-            <table><tr><th>Email</th><th>Status</th><th>Última Atualização (Brasília)</th><th>Expira em (Brasília)</th></tr>`;
+            <table><tr><th>Email</th><th>Nome</th><th>Telefone</th><th>Status</th><th>Última Atualização (Brasília)</th><th>Expira em (Brasília)</th></tr>`;
 
         rows.forEach(customer => {
             const dataAtualizacao = customer.updated_at ? new Date(customer.updated_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'N/A';
@@ -202,6 +215,8 @@ app.get("/admin/view-data", async (req, res) => {
             html += `
                 <tr>
                     <td>${customer.email}</td>
+                    <td>${customer.name || 'Não informado'}</td>
+                    <td>${customer.phone || 'Não informado'}</td>
                     <td>${customer.status}</td>
                     <td>${dataAtualizacao}</td>
                     <td>${dataExpiracao}</td>
@@ -297,7 +312,6 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
         return res.status(500).json({ error: "Erro ao gerar sermão após várias tentativas." });
     }
 });
-
 
 // --- 5. INICIALIZAÇÃO DO SERVIDOR ---
 app.listen(port, () => {
