@@ -1,6 +1,7 @@
-// server.js - Versão 3.2.1 com Rota de Admin para Visualização
+// server.js - Versão 3.2.2 com Correção de Fuso Horário na Visualização
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
+// ... (Toda a parte de importações permanece a mesma) ...
 require("dotenv").config();
 const express = require("express");
 const path = require("path");
@@ -46,7 +47,6 @@ function requireLogin(req, res, next) {
   if (req.session && req.session.user) { return next(); } 
   else { return res.redirect('/'); }
 }
-
 
 // --- 3. ROTAS PÚBLICAS (Login e Webhook) ---
 // ... (As rotas de login, logout e webhook permanecem as mesmas) ...
@@ -151,52 +151,46 @@ app.post("/eduzz/webhook", async (req, res) => {
 
 // --- ROTA DE ADMINISTRAÇÃO SECRETA E TEMPORÁRIA ---
 app.get("/admin/view-data", async (req, res) => {
-    // 1. Segurança: Verifica se uma chave secreta foi passada na URL
     const { key } = req.query;
     if (key !== process.env.ADMIN_KEY) {
         return res.status(403).send("<h1>Acesso Negado</h1><p>Chave de acesso inválida.</p>");
     }
-
     try {
-        // 2. Lê os dados da tabela customers
-        const { rows } = await pool.query('SELECT * FROM customers ORDER BY updated_at DESC');
+        // MUDANÇA AQUI: Adicionamos a conversão de fuso horário na consulta SQL
+        const query = `
+            SELECT 
+                email, 
+                status, 
+                updated_at AT TIME ZONE 'America/Sao_Paulo' AS horario_brasilia 
+            FROM customers 
+            ORDER BY updated_at DESC
+        `;
+        const { rows } = await pool.query(query);
 
-        // 3. Monta uma página HTML simples para exibir os dados
         let html = `
             <style>
-                body { font-family: sans-serif; }
-                table { border-collapse: collapse; width: 100%; }
-                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-                th { background-color: #f2f2f2; }
+                body { font-family: sans-serif; } table { border-collapse: collapse; width: 100%; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }
             </style>
             <h1>Visualização de Clientes (${rows.length} registros)</h1>
-            <table>
-                <tr>
-                    <th>Email</th>
-                    <th>Status</th>
-                    <th>Última Atualização</th>
-                </tr>
-        `;
+            <table><tr><th>Email</th><th>Status</th><th>Última Atualização (Brasília)</th></tr>`;
 
         rows.forEach(customer => {
             html += `
                 <tr>
                     <td>${customer.email}</td>
                     <td>${customer.status}</td>
-                    <td>${new Date(customer.updated_at).toLocaleString('pt-BR')}</td>
-                </tr>
-            `;
+                    <td>${new Date(customer.horario_brasilia).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</td>
+                </tr>`;
         });
 
         html += '</table>';
         res.send(html);
-
     } catch (error) {
         console.error("Erro ao buscar dados de admin:", error);
         res.status(500).send("<h1>Erro ao buscar dados</h1>");
     }
 });
-
 
 // --- 4. ROTAS PROTEGIDAS (Apenas para usuários logados) ---
 // ... (Suas rotas /app e /api/next-step permanecem as mesmas) ...
@@ -281,7 +275,6 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
         return res.status(500).json({ error: "Erro ao gerar sermão após várias tentativas." });
     }
 });
-
 
 // --- 5. INICIALIZAÇÃO DO SERVIDOR ---
 app.listen(port, () => {
