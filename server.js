@@ -1,4 +1,4 @@
-// server.js - Versão Final (Fase 1 Completa)
+// server.js - Versão Final 6.1 com Links de Importação e Prompts Refinados
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -214,15 +214,23 @@ app.get("/admin/view-data", async (req, res) => {
 
         let html = `
             <style>
-                body { font-family: sans-serif; } table { border-collapse: collapse; width: 100%; }
+                body { font-family: sans-serif; padding: 20px; } table { border-collapse: collapse; width: 100%; }
                 th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }
-                .actions a { margin-right: 10px; } .nav-links a { margin-right: 20px; }
+                .actions a { margin-right: 10px; } .nav-links a { margin-right: 20px; } .nav-container { margin-bottom: 20px; }
             </style>
             <h1>Painel de Administração</h1>
-            <div class="nav-links">
-                <a href="/admin/view-data?key=${key}"><b>Clientes da Eduzz</b></a>
-                <a href="/admin/view-access-control?key=${key}">Acesso Manual (Vitalícios)</a>
-                <a href="/admin/view-activity?key=${key}">Log de Atividades</a>
+            <div class="nav-container">
+                <div class="nav-links">
+                    <a href="/admin/view-data?key=${key}"><b>Clientes da Eduzz</b></a>
+                    <a href="/admin/view-access-control?key=${key}">Acesso Manual (Vitalícios)</a>
+                    <a href="/admin/view-activity?key=${key}">Log de Atividades</a>
+                </div>
+                <hr>
+                <h3>Importação de Clientes (use com cuidado)</h3>
+                <div class="nav-links">
+                    <a href="/admin/import-from-csv?key=${key}&plan_type=anual"><b>[Importar Clientes Anuais via CSV]</b></a>
+                    <a href="/admin/import-from-csv?key=${key}&plan_type=vitalicio"><b>[Importar Clientes Vitalícios via CSV]</b></a>
+                </div>
             </div>
             <h2>Clientes da Eduzz (${rows.length} registros)</h2>
             <table><tr><th>Email</th><th>Nome</th><th>Telefone</th><th>Status</th><th>Última Atualização (Brasília)</th><th>Expira em (Brasília)</th><th>Ações</th></tr>`;
@@ -333,15 +341,17 @@ app.get("/admin/view-access-control", async (req, res) => {
 
         let html = `
             <style>
-                body { font-family: sans-serif; } table { border-collapse: collapse; width: 100%; }
+                body { font-family: sans-serif; padding: 20px; } table { border-collapse: collapse; width: 100%; }
                 th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }
-                .nav-links a { margin-right: 20px; }
+                .nav-links a { margin-right: 20px; } .nav-container { margin-bottom: 20px; }
             </style>
             <h1>Painel de Administração</h1>
-            <div class="nav-links">
-                <a href="/admin/view-data?key=${key}">Clientes da Eduzz</a>
-                <a href="/admin/view-access-control?key=${key}"><b>Acesso Manual (Vitalícios)</b></a>
-                <a href="/admin/view-activity?key=${key}">Log de Atividades</a>
+            <div class="nav-container">
+                <div class="nav-links">
+                    <a href="/admin/view-data?key=${key}">Clientes da Eduzz</a>
+                    <a href="/admin/view-access-control?key=${key}"><b>Acesso Manual (Vitalícios)</b></a>
+                    <a href="/admin/view-activity?key=${key}">Log de Atividades</a>
+                </div>
             </div>
             <h2>Acesso Manual (Vitalícios) (${rows.length} registros)</h2>
             <table><tr><th>Email</th><th>Permissão</th><th>Motivo</th><th>Criado em (Brasília)</th></tr>`;
@@ -377,15 +387,17 @@ app.get("/admin/view-activity", async (req, res) => {
 
         let html = `
             <style>
-                body { font-family: sans-serif; } table { border-collapse: collapse; width: 100%; }
+                body { font-family: sans-serif; padding: 20px; } table { border-collapse: collapse; width: 100%; }
                 th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }
-                .nav-links a { margin-right: 20px; }
+                .nav-links a { margin-right: 20px; } .nav-container { margin-bottom: 20px; }
             </style>
             <h1>Painel de Administração</h1>
-            <div class="nav-links">
-                <a href="/admin/view-data?key=${key}">Clientes da Eduzz</a>
-                <a href="/admin/view-access-control?key=${key}">Acesso Manual (Vitalícios)</a>
-                <a href="/admin/view-activity?key=${key}"><b>Log de Atividades</b></a>
+            <div class="nav-container">
+                <div class="nav-links">
+                    <a href="/admin/view-data?key=${key}">Clientes da Eduzz</a>
+                    <a href="/admin/view-access-control?key=${key}">Acesso Manual (Vitalícios)</a>
+                    <a href="/admin/view-activity?key=${key}"><b>Log de Atividades</b></a>
+                </div>
             </div>
             <h2>Log de Atividades (Últimos ${rows.length} sermões gerados)</h2>
             <table><tr><th>Email</th><th>Tema</th><th>Público</th><th>Tipo</th><th>Duração</th><th>Modelo Usado</th><th>Instrução do Prompt</th><th>Gerado em (Brasília)</th></tr>`;
@@ -530,27 +542,27 @@ async function fetchWithTimeout(url, options, timeout = 30000) {
 function getPromptConfig(sermonType, duration) {
     const configs = {
         'Expositivo': {
-            'Entre 1 e 10 min': { instruction: 'Escreva entre 200 e 450 tokens.', structure: 'Siga esta estrutura: 1. Tema da Mensagem. 2. Brevíssima explicação do contexto do texto bíblico. 3. Brevíssima Aplicação Prática.', max_tokens: 450 },
-            'Entre 10 e 20 min': { instruction: 'Escreva entre 450 e 750 tokens.', structure: 'Siga esta estrutura: 1. Brevíssima Introdução. 2. Brevíssima explicação do contexto do texto bíblico. 3. Brevíssima explicação da ideia central do texto bíblico. 4. Brevíssima Aplicação. 5. Brevíssima Chamada à Ação.', max_tokens: 750 },
-            'Entre 20 e 30 min': { instruction: 'Escreva entre 750 e 1200 tokens.', structure: 'Siga esta estrutura: 1. Breve Introdução. 2. Breve Contexto histórico-cultural do texto bíblico. 3. Breve Exegese do bloco textual. 4. Breve Aplicação Prática. 5. Breve Conclusão.', max_tokens: 1200 },
+            'Entre 1 e 10 min': { instruction: 'Escreva entre 200 e 450 tokens.', structure: 'Siga esta estrutura: 1. Tema da Mensagem. 2. Um parágrafo muitíssimo breve e objetivo explicando o contexto do texto bíblico. 3. Um parágrafo muitíssimo breve e objetivo com a Aplicação Prática.', max_tokens: 300 },
+            'Entre 10 e 20 min': { instruction: 'Escreva entre 450 e 750 tokens.', structure: 'Siga esta estrutura: 1. Um parágrafo muitíssimo breve e objetivo de Introdução. 2. Um parágrafo muitíssimo breve e objetivo explicando o contexto do texto bíblico. 3. Um parágrafo muitíssimo breve e objetivo explicando a ideia central do texto bíblico. 4. Um parágrafo muitíssimo breve e objetivo de Aplicação. 5. Uma brevíssima Chamada à Ação.', max_tokens: 750 },
+            'Entre 20 e 30 min': { instruction: 'Escreva entre 750 e 1200 tokens.', structure: 'Siga esta estrutura: 1. Dois parágrafos muitíssimo breves e objetivos de Introdução. 2. Dois parágrafos muitíssimo breves e objetivos sobre o Contexto histórico-cultural do texto bíblico. 3. Dois parágrafos muitíssimo breves e objetivos de Exegese do bloco textual. 4. Dois parágrafos muitíssimo breves e objetivos de Aplicação Prática. 5. Dois parágrafos muitíssimo breves e objetivos de Conclusão.', max_tokens: 1200 },
             'Entre 30 e 40 min': { instruction: 'Escreva entre 1200 e 1900 tokens.', structure: 'Siga esta estrutura: 1. Introdução com ilustração. 2. Contexto do livro e da passagem bíblica. 3. Exegese verso a verso, explicando o fluxo do argumento. 4. Aplicação para a vida pessoal. 5. Conclusão.', max_tokens: 1900 },
             'Entre 40 e 50 min': { instruction: 'Escreva entre 1900 e 2500 tokens.', structure: 'Siga esta estrutura: 1. Introdução detalhada. 2. Contexto histórico e teológico. 3. Exegese aprofundada do texto bíblico, com significado de uma palavra-chave no original. 4. Uma Ilustração. 5. Aplicações (pessoal e comunitária). 6. Conclusão com apelo.', max_tokens: 2500 },
             'Entre 50 e 60 min': { instruction: 'Escreva entre 2500 e 3500 tokens.', structure: 'Siga esta estrutura: 1. Introdução. 2. Grande Contexto Bíblico-Teológico. 3. Exegese minuciosa do texto bíblico com análise de palavras no original e referências cruzadas. 4. Múltiplas Ilustrações. 5. Aplicações multi-pastorais. 6. Conclusão e Oração.', max_tokens: 3500 },
             'Acima de 1 hora': { instruction: 'Escreva entre 3500 e 5000 tokens.', structure: 'Siga esta estrutura: 1. Introdução. 2. Discussão teológica. 3. Exegese exaustiva do texto bíblico, com múltiplas análises. 4. Apontamentos para Cristo. 5. Aplicações profundas. 6. Conclusão missional.', max_tokens: 5000 }
         },
         'Textual': {
-            'Entre 1 e 10 min': { instruction: 'Escreva entre 200 e 450 tokens.', structure: 'Siga esta estrutura: 1. Leitura do Texto Bíblico-Base. 2. Brevíssima explicação da ideia central. 3. Brevíssima Aplicação.', max_tokens: 450 },
-            'Entre 10 e 20 min': { instruction: 'Escreva entre 450 e 750 tokens.', structure: 'Siga esta estrutura: 1. Brevíssima Introdução. 2. Brevíssima Leitura do Texto Bíblico. 3. Brevíssima explicação do tema principal. 4. Brevíssima Aplicação. 5. Brevíssima Conclusão.', max_tokens: 750 },
-            'Entre 20 e 30 min': { instruction: 'Escreva entre 750 e 1200 tokens.', structure: 'Siga esta estrutura: 1. Breve Introdução. 2. Breve leitura e divisão do texto bíblico em 2 pontos. 3. Breve explicação de cada ponto. 4. Breve Aplicação geral. 5. Breve Conclusão.', max_tokens: 1200 },
+            'Entre 1 e 10 min': { instruction: 'Escreva entre 200 e 450 tokens.', structure: 'Siga esta estrutura: 1. Leitura do Texto Bíblico-Base. 2. Um parágrafo muitíssimo breve e objetivo explicando a ideia central. 3. Uma brevíssima Aplicação.', max_tokens: 300 },
+            'Entre 10 e 20 min': { instruction: 'Escreva entre 450 e 750 tokens.', structure: 'Siga esta estrutura: 1. Um parágrafo muitíssimo breve e objetivo de Introdução. 2. Brevíssima Leitura do Texto Bíblico. 3. Um parágrafo muitíssimo breve e objetivo explicando o tema principal. 4. Uma brevíssima Aplicação. 5. Brevíssima Conclusão.', max_tokens: 750 },
+            'Entre 20 e 30 min': { instruction: 'Escreva entre 750 e 1200 tokens.', structure: 'Siga esta estrutura: 1. Dois parágrafos muitíssimo breves e objetivos de Introdução. 2. Breve leitura e divisão do texto bíblico em 2 pontos. 3. Dois parágrafos muitíssimo breves e objetivos explicando cada ponto. 4. Breve Aplicação geral. 5. Breve Conclusão.', max_tokens: 1200 },
             'Entre 30 e 40 min': { instruction: 'Escreva entre 1200 e 1900 tokens.', structure: 'Siga esta estrutura: 1. Introdução. 2. Divisão do texto bíblico em 3 pontos principais. 3. Desenvolvimento de cada ponto com uma explicação clara. 4. Aplicação para cada ponto. 5. Conclusão.', max_tokens: 1900 },
             'Entre 40 e 50 min': { instruction: 'Escreva entre 1900 e 2500 tokens.', structure: 'Siga esta estrutura: 1. Introdução com ilustração. 2. Contexto da passagem bíblica. 3. Divisão do texto bíblico em 3 pontos. 4. Desenvolvimento de cada ponto com referências e uma breve exegese. 5. Aplicação. 6. Conclusão com apelo.', max_tokens: 2500 },
             'Entre 50 e 60 min': { instruction: 'Escreva entre 2500 e 3500 tokens.', structure: 'Siga esta estrutura: 1. Introdução. 2. Contexto. 3. Divisão do texto bíblico em pontos lógicos. 4. Desenvolvimento aprofundado de cada ponto, com análise de palavras e ilustrações. 5. Aplicações. 6. Conclusão e Oração.', max_tokens: 3500 },
             'Acima de 1 hora': { instruction: 'Escreva entre 3500 e 5000 tokens.', structure: 'Siga esta estrutura: 1. Introdução. 2. Contexto. 3. Divisão do texto bíblico em todos os seus pontos naturais. 4. Desenvolvimento exaustivo de cada ponto, com exegese e referências cruzadas. 5. Múltiplas Aplicações. 6. Conclusão.', max_tokens: 5000 }
         },
         'Temático': {
-            'Entre 1 e 10 min': { instruction: 'Escreva entre 200 e 450 tokens.', structure: 'Siga esta estrutura: 1. Apresentação do Tema. 2. Brevíssima explanação com um versículo bíblico principal. 3. Brevíssima Aplicação.', max_tokens: 450 },
-            'Entre 10 e 20 min': { instruction: 'Escreva entre 450 e 750 tokens.', structure: 'Siga esta estrutura: 1. Brevíssima Introdução ao Tema. 2. Brevíssimo desenvolvimento com base em 2 textos bíblicos. 3. Brevíssima Aplicação. 4. Brevíssima Conclusão.', max_tokens: 750 },
-            'Entre 20 e 30 min': { instruction: 'Escreva entre 750 e 1200 tokens.', structure: 'Siga esta estrutura: 1. Breve Introdução. 2. Breve desenvolvimento do tema usando 2 pontos, cada um com um texto bíblico de apoio. 3. Breve Aplicação. 4. Breve Conclusão.', max_tokens: 1200 },
+            'Entre 1 e 10 min': { instruction: 'Escreva entre 200 e 450 tokens.', structure: 'Siga esta estrutura: 1. Apresentação do Tema. 2. Um parágrafo muitíssimo breve e objetivo de explanação com um versículo bíblico principal. 3. Uma brevíssima Aplicação.', max_tokens: 300 },
+            'Entre 10 e 20 min': { instruction: 'Escreva entre 450 e 750 tokens.', structure: 'Siga esta estrutura: 1. Um parágrafo muitíssimo breve e objetivo de Introdução ao Tema. 2. Um brevíssimo desenvolvimento com base em 2 textos bíblicos. 3. Uma brevíssima Aplicação. 4. Brevíssima Conclusão.', max_tokens: 750 },
+            'Entre 20 e 30 min': { instruction: 'Escreva entre 750 e 1200 tokens.', structure: 'Siga esta estrutura: 1. Dois parágrafos muitíssimo breves e objetivos de Introdução. 2. Breve desenvolvimento do tema usando 2 pontos, cada um com um texto bíblico de apoio. 3. Breve Aplicação. 4. Breve Conclusão.', max_tokens: 1200 },
             'Entre 30 e 40 min': { instruction: 'Escreva entre 1200 e 1900 tokens.', structure: 'Siga esta estrutura: 1. Introdução ao tema. 2. Primeiro Ponto (com um texto bíblico de apoio). 3. Segundo Ponto (com outro texto bíblico de apoio). 4. Aplicação unificada. 5. Conclusão.', max_tokens: 1900 },
             'Entre 40 e 50 min': { instruction: 'Escreva entre 1900 e 2500 tokens.', structure: 'Siga esta estrutura: 1. Introdução com ilustração. 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico e uma breve explicação. 3. Aplicações práticas. 4. Conclusão.', max_tokens: 2500 },
             'Entre 50 e 60 min': { instruction: 'Escreva entre 2500 e 3500 tokens.', structure: 'Siga esta estrutura: 1. Introdução. 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico, breve exegese e uma ilustração. 3. Aplicações para cada ponto. 4. Conclusão com apelo.', max_tokens: 3500 },
@@ -563,13 +575,17 @@ function getPromptConfig(sermonType, duration) {
     let model;
     let temp;
     
-    if (config.max_tokens <= 1200) { // Pequeno
+    const size = duration.includes('10 min') || duration.includes('20 min') ? 'small'
+                 : duration.includes('30 min') || duration.includes('40 min') ? 'medium'
+                 : 'large';
+
+    if (size === 'small') {
         model = process.env.OPENAI_MODEL_SMALL || 'gpt-4o-mini';
         temp = parseFloat(process.env.OPENAI_TEMP_SMALL) || 0.7;
-    } else if (config.max_tokens <= 2500) { // Médio
+    } else if (size === 'medium') {
         model = process.env.OPENAI_MODEL_MEDIUM || 'gpt-4o-mini';
         temp = parseFloat(process.env.OPENAI_TEMP_MEDIUM) || 0.7;
-    } else { // Grande
+    } else { // large
         model = process.env.OPENAI_MODEL_LARGE || 'gpt-4o';
         temp = parseFloat(process.env.OPENAI_TEMP_LARGE) || 0.75;
     }
@@ -627,7 +643,7 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
             const temperature = promptConfig.temperature;
             const maxTokens = promptConfig.max_tokens;
             
-            console.log(`[OpenAI] Enviando requisição. Modelo: ${modelToUse}, Temperatura: ${temperature}`);
+            console.log(`[OpenAI] Enviando requisição. Modelo: ${modelToUse}, Temperatura: ${temperature}, Max Tokens: ${maxTokens}`);
 
             const data = await fetchWithTimeout( "https://api.openai.com/v1/chat/completions", {
                 method: "POST",
