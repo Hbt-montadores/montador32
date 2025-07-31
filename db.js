@@ -1,4 +1,4 @@
-// db.js - Versão Final (Fase 1) com Estrutura Completa
+// db.js - Versão 3.1 com Busca por Telefone Corrigida
 const { Pool } = require('pg');
 
 const pool = new Pool({
@@ -50,7 +50,7 @@ const pool = new Pool({
     `);
     console.log('✔️ Tabela "user_sessions" pronta.');
 
-    // NOVA Tabela para registrar atividades
+    // Tabela para registrar atividades
     await pool.query(`
       CREATE TABLE IF NOT EXISTS activity_log (
         id SERIAL PRIMARY KEY,
@@ -83,10 +83,10 @@ function normalizePhone(phoneString) {
 }
 
 /**
- * Atualiza o status de um cliente via webhook, agora salvando nome e telefone.
+ * Atualiza o status de um cliente via webhook, agora salvando o telefone completo.
  */
 async function markStatus(email, name, phone, status) {
-  const normalizedPhone = normalizePhone(phone);
+  // Salva o telefone completo como veio da Eduzz, a normalização será na hora da busca.
   await pool.query(
     `INSERT INTO customers (email, name, phone, status, expires_at)
        VALUES ($1, $2, $3, $4, NULL)
@@ -96,7 +96,7 @@ async function markStatus(email, name, phone, status) {
          status = EXCLUDED.status,
          expires_at = NULL,
          updated_at = now();`,
-    [email.toLowerCase(), name, normalizedPhone, status]
+    [email.toLowerCase(), name, phone, status]
   );
 }
 
@@ -109,12 +109,24 @@ async function getCustomerRecordByEmail(email) {
 }
 
 /**
- * Busca o registro completo de um cliente pelo telefone.
+ * Busca o registro completo de um cliente pelo telefone, comparando os últimos 6 dígitos.
  */
 async function getCustomerRecordByPhone(phone) {
-  const normalizedPhone = normalizePhone(phone);
-  if (!normalizedPhone) return null;
-  const { rows } = await pool.query(`SELECT * FROM customers WHERE phone = $1`, [normalizedPhone]);
+  // 1. Normaliza o número que o USUÁRIO digitou para 6 dígitos
+  const normalizedUserInput = normalizePhone(phone);
+  if (!normalizedUserInput) return null;
+
+  // 2. O comando SQL agora é inteligente.
+  // Ele pega a coluna 'phone' do banco, remove os não-dígitos,
+  // pega os últimos 6 dígitos, e COMPARA com o que o usuário digitou.
+  const query = `
+    SELECT * FROM customers 
+    WHERE RIGHT(REGEXP_REPLACE(phone, '\\D', '', 'g'), 6) = $1
+  `;
+  
+  const { rows } = await pool.query(query, [normalizedUserInput]);
+  
+  // Retorna o primeiro cliente encontrado que corresponda
   return rows[0] || null;
 }
 
