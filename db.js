@@ -1,4 +1,4 @@
-// db.js - Versão 3.1 com Busca por Telefone Corrigida
+// db.js - Versão Final (Fase 1) com Estrutura Completa
 const { Pool } = require('pg');
 
 const pool = new Pool({
@@ -60,9 +60,11 @@ const pool = new Pool({
         sermon_type TEXT,
         sermon_duration TEXT,
         model_used TEXT,
+        prompt_instruction TEXT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
       );
     `);
+    await pool.query(`ALTER TABLE activity_log ADD COLUMN IF NOT EXISTS prompt_instruction TEXT;`);
     console.log('✔️ Tabela "activity_log" pronta.');
 
   } catch (err) {
@@ -83,10 +85,9 @@ function normalizePhone(phoneString) {
 }
 
 /**
- * Atualiza o status de um cliente via webhook, agora salvando o telefone completo.
+ * Atualiza o status de um cliente via webhook, salvando o telefone completo.
  */
 async function markStatus(email, name, phone, status) {
-  // Salva o telefone completo como veio da Eduzz, a normalização será na hora da busca.
   await pool.query(
     `INSERT INTO customers (email, name, phone, status, expires_at)
        VALUES ($1, $2, $3, $4, NULL)
@@ -112,13 +113,9 @@ async function getCustomerRecordByEmail(email) {
  * Busca o registro completo de um cliente pelo telefone, comparando os últimos 6 dígitos.
  */
 async function getCustomerRecordByPhone(phone) {
-  // 1. Normaliza o número que o USUÁRIO digitou para 6 dígitos
   const normalizedUserInput = normalizePhone(phone);
   if (!normalizedUserInput) return null;
-
-  // 2. O comando SQL agora é inteligente.
-  // Ele pega a coluna 'phone' do banco, remove os não-dígitos,
-  // pega os últimos 6 dígitos, e COMPARA com o que o usuário digitou.
+  
   const query = `
     SELECT * FROM customers 
     WHERE RIGHT(REGEXP_REPLACE(phone, '\\D', '', 'g'), 6) = $1
@@ -126,7 +123,6 @@ async function getCustomerRecordByPhone(phone) {
   
   const { rows } = await pool.query(query, [normalizedUserInput]);
   
-  // Retorna o primeiro cliente encontrado que corresponda
   return rows[0] || null;
 }
 
@@ -142,12 +138,12 @@ async function getManualPermission(email) {
  * Salva um registro de atividade de geração de sermão.
  */
 async function logSermonActivity(details) {
-    const { user_email, sermon_topic, sermon_audience, sermon_type, sermon_duration, model_used } = details;
+    const { user_email, sermon_topic, sermon_audience, sermon_type, sermon_duration, model_used, prompt_instruction } = details;
     const query = `
-        INSERT INTO activity_log (user_email, sermon_topic, sermon_audience, sermon_type, sermon_duration, model_used)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO activity_log (user_email, sermon_topic, sermon_audience, sermon_type, sermon_duration, model_used, prompt_instruction)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
     `;
-    await pool.query(query, [user_email, sermon_topic, sermon_audience, sermon_type, sermon_duration, model_used]);
+    await pool.query(query, [user_email, sermon_topic, sermon_audience, sermon_type, sermon_duration, model_used, prompt_instruction]);
 }
 
 module.exports = {
