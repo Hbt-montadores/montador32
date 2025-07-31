@@ -1,4 +1,4 @@
-// server.js - Versão Final 6.0 com Matriz de Prompts Dinâmicos
+// server.js - Versão Final (Fase 1 Completa)
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -66,7 +66,7 @@ const checkAccessAndLogin = (req, res, customer) => {
         const agora = new Date();
         const dataExpiracao = new Date(customer.expires_at);
         if (agora > dataExpiracao) {
-            const expiredErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Acesso Expirado</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Acesso Expirado</h1><p>Sua assinatura anual expirou. Por favor, renove para continuar acessando.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">RENOVAR ASSINATURA</a><a href="/" class="back-link">Voltar</a></div></body></html>`;
+            const expiredErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Acesso Expirado</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu, clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
             return res.status(401).send(expiredErrorMessageHTML);
         }
     }
@@ -77,7 +77,7 @@ const checkAccessAndLogin = (req, res, customer) => {
         return res.redirect('/app');
     }
     
-    const overdueErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pagamento Pendente</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Identificamos que sua assinatura está com o pagamento pendente ou foi cancelada. Clique no botão abaixo para regularizar seu acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">REGULARIZAR ACESSO</a><a href="/" class="back-link">Tentar novamente após regularizar</a></div></body></html>`;
+    const overdueErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pagamento Pendente</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu, clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
     return res.status(401).send(overdueErrorMessageHTML);
 };
 
@@ -225,7 +225,7 @@ app.get("/admin/view-data", async (req, res) => {
                 <a href="/admin/view-activity?key=${key}">Log de Atividades</a>
             </div>
             <h2>Clientes da Eduzz (${rows.length} registros)</h2>
-            <table><tr><th>Email</th><th>Nome</th><th>Telefone (últimos 6)</th><th>Status</th><th>Última Atualização (Brasília)</th><th>Expira em (Brasília)</th><th>Ações</th></tr>`;
+            <table><tr><th>Email</th><th>Nome</th><th>Telefone</th><th>Status</th><th>Última Atualização (Brasília)</th><th>Expira em (Brasília)</th><th>Ações</th></tr>`;
 
         rows.forEach(customer => {
             const dataAtualizacao = customer.updated_at ? new Date(customer.updated_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'N/A';
@@ -278,7 +278,7 @@ app.get("/admin/edit-customer", async (req, res) => {
                 <input type="hidden" name="email" value="${customer.email}">
 
                 <div><label for="name">Nome:</label><input type="text" id="name" name="name" value="${customer.name || ''}"></div>
-                <div><label for="phone">Telefone (últimos 6 dígitos):</label><input type="text" id="phone" name="phone" value="${customer.phone || ''}"></div>
+                <div><label for="phone">Telefone:</label><input type="text" id="phone" name="phone" value="${customer.phone || ''}"></div>
                 
                 <div><label for="status">Status:</label>
                     <select id="status" name="status">
@@ -306,14 +306,6 @@ app.post("/admin/update-customer", async (req, res) => {
     const { key, email, name, phone, status, expires_at } = req.body;
     if (key !== process.env.ADMIN_KEY) { return res.status(403).send("Acesso Negado"); }
     
-    function normalizePhone(phoneString) {
-        if (!phoneString || typeof phoneString !== 'string') return null;
-        const digitsOnly = phoneString.replace(/\D/g, '');
-        if (digitsOnly.length < 6) return null;
-        return digitsOnly.slice(-6);
-    }
-    const normalizedPhone = normalizePhone(phone);
-
     try {
         const expirationDate = expires_at ? new Date(expires_at).toISOString() : null;
 
@@ -322,7 +314,7 @@ app.post("/admin/update-customer", async (req, res) => {
             SET name = $1, phone = $2, status = $3, expires_at = $4, updated_at = NOW() 
             WHERE email = $5
         `;
-        await pool.query(query, [name, normalizedPhone, status, expirationDate, email]);
+        await pool.query(query, [name, phone, status, expirationDate, email]);
         res.redirect(`/admin/view-data?key=${key}`);
     } catch (error) {
         console.error("Erro ao atualizar cliente:", error);
@@ -396,7 +388,7 @@ app.get("/admin/view-activity", async (req, res) => {
                 <a href="/admin/view-activity?key=${key}"><b>Log de Atividades</b></a>
             </div>
             <h2>Log de Atividades (Últimos ${rows.length} sermões gerados)</h2>
-            <table><tr><th>Email</th><th>Tema</th><th>Público</th><th>Tipo</th><th>Duração</th><th>Modelo Usado</th><th>Gerado em (Brasília)</th></tr>`;
+            <table><tr><th>Email</th><th>Tema</th><th>Público</th><th>Tipo</th><th>Duração</th><th>Modelo Usado</th><th>Instrução do Prompt</th><th>Gerado em (Brasília)</th></tr>`;
 
         rows.forEach(log => {
             const dataCriacao = log.created_at ? new Date(log.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'N/A';
@@ -409,6 +401,7 @@ app.get("/admin/view-activity", async (req, res) => {
                     <td>${log.sermon_type}</td>
                     <td>${log.sermon_duration}</td>
                     <td>${log.model_used}</td>
+                    <td>${log.prompt_instruction || ''}</td>
                     <td>${dataCriacao}</td>
                 </tr>`;
         });
@@ -484,7 +477,7 @@ app.get("/admin/import-from-csv", async (req, res) => {
                             phone = COALESCE(EXCLUDED.phone, customers.phone),
                             expires_at = EXCLUDED.expires_at,
                             updated_at = NOW();`;
-                    await client.query(query, [customerData.email.toLowerCase(), customerData.name, normalizePhone(customerData.phone), expirationDate.toISOString()]);
+                    await client.query(query, [customerData.email.toLowerCase(), customerData.name, customerData.phone, expirationDate.toISOString()]);
                 } else if (plan_type === 'vitalicio') {
                     const query = `
                         INSERT INTO access_control (email, permission, reason)
@@ -534,89 +527,7 @@ async function fetchWithTimeout(url, options, timeout = 30000) {
     });
 }
 
-app.post("/api/next-step", requireLogin, async (req, res) => {
-    const userResponse = req.body.response;
-    const step = req.body.step || 1;
-    console.log( `Usuário [${req.session.user.email}] - Processando etapa ${step}, resposta: ${userResponse}`);
-    try {
-        if (step === 1) {
-            req.session.sermonData = { topic: userResponse };
-            return res.json({
-                question: "Que tipo de público você vai pregar?",
-                options: ["A) Crianças","B) Adolescentes","C) Jovens","D) Mulheres","E) Homens","F) Público misto","G) Não convertido"],
-                step: 2,
-            });
-        } else if (step === 2) {
-            req.session.sermonData.audience = userResponse;
-            return res.json({
-                question: "Que tipo de sermão você vai pregar?",
-                options: ["A) Expositivo", "B) Textual", "C) Temático"],
-                step: 3,
-            });
-        } else if (step === 3) {
-            req.session.sermonData.sermonType = userResponse;
-            return res.json({
-                question: "Quantos minutos deve durar o sermão?",
-                options: ["Entre 1 e 10 min","Entre 10 e 20 min","Entre 20 e 30 min","Entre 30 e 40 min","Entre 40 e 50 min","Entre 50 e 60 min","Acima de 1 hora"],
-                step: 4,
-            });
-        } else if (step === 4) {
-            req.session.sermonData.duration = userResponse;
-            const { topic, audience, sermonType, duration } = req.session.sermonData;
-            if (!topic || !audience || !sermonType || !duration) {
-                return res.status(400).json({ error: "Faltam informações para gerar o sermão." });
-            }
-            if (!process.env.OPENAI_API_KEY) {
-                console.error("Erro: Chave da API OpenAI não configurada.");
-                return res.status(500).json({ error: "Erro interno: Chave da API não encontrada." });
-            }
-
-            // MATRIZ DE PROMPTS DINÂMICOS
-            const promptConfig = getPromptConfig(sermonType, duration);
-
-            const prompt = `Gere um sermão do tipo ${sermonType} para um público de ${audience} sobre o tema "${topic}". ${promptConfig.instruction} ${promptConfig.structure}`;
-            const modelToUse = promptConfig.model;
-            const temperature = promptConfig.temperature;
-            const maxTokens = promptConfig.max_tokens;
-            
-            console.log(`[OpenAI] Enviando requisição. Modelo: ${modelToUse}, Temperatura: ${temperature}`);
-
-            const data = await fetchWithTimeout( "https://api.openai.com/v1/chat/completions", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}`},
-                body: JSON.stringify({
-                    model: modelToUse,
-                    messages: [{ role: "user", content: prompt }],
-                    max_tokens: maxTokens,
-                    temperature: temperature,
-                }),
-            });
-            
-            console.log(`[OpenAI] Sermão para [${req.session.user.email}] gerado com sucesso!`);
-            
-            await logSermonActivity({
-                user_email: req.session.user.email,
-                sermon_topic: topic,
-                sermon_audience: audience,
-                sermon_type: sermonType,
-                sermon_duration: duration,
-                model_used: modelToUse
-            });
-
-            delete req.session.sermonData;
-            res.json({ sermon: data.choices[0].message.content });
-        }
-    } catch (error) {
-        console.error("[Erro ao gerar sermão]", error);
-        return res.status(500).json({ error: "Erro ao gerar sermão após várias tentativas." });
-    }
-});
-
 function getPromptConfig(sermonType, duration) {
-    // Lógica para selecionar a estrutura e os parâmetros corretos
-    // ... (esta função será longa, contendo a matriz de 21 prompts)
-    // Para manter o código legível, vou criar a função completa
-    
     const configs = {
         'Expositivo': {
             'Entre 1 e 10 min': { instruction: 'Escreva entre 200 e 450 tokens.', structure: 'Siga esta estrutura: 1. Tema da Mensagem. 2. Brevíssima explicação do contexto do texto bíblico. 3. Brevíssima Aplicação Prática.', max_tokens: 450 },
@@ -672,6 +583,83 @@ function getPromptConfig(sermonType, duration) {
     };
 }
 
+app.post("/api/next-step", requireLogin, async (req, res) => {
+    const userResponse = req.body.response;
+    const step = req.body.step || 1;
+    console.log( `Usuário [${req.session.user.email}] - Processando etapa ${step}, resposta: ${userResponse}`);
+    try {
+        if (step === 1) {
+            req.session.sermonData = { topic: userResponse };
+            return res.json({
+                question: "Que tipo de público você vai pregar?",
+                options: ["A) Crianças","B) Adolescentes","C) Jovens","D) Mulheres","E) Homens","F) Público misto","G) Não convertido"],
+                step: 2,
+            });
+        } else if (step === 2) {
+            req.session.sermonData.audience = userResponse;
+            return res.json({
+                question: "Que tipo de sermão você vai pregar?",
+                options: ["A) Expositivo", "B) Textual", "C) Temático"],
+                step: 3,
+            });
+        } else if (step === 3) {
+            req.session.sermonData.sermonType = userResponse;
+            return res.json({
+                question: "Quantos minutos deve durar o sermão?",
+                options: ["Entre 1 e 10 min","Entre 10 e 20 min","Entre 20 e 30 min","Entre 30 e 40 min","Entre 40 e 50 min","Entre 50 e 60 min","Acima de 1 hora"],
+                step: 4,
+            });
+        } else if (step === 4) {
+            req.session.sermonData.duration = userResponse;
+            const { topic, audience, sermonType, duration } = req.session.sermonData;
+            if (!topic || !audience || !sermonType || !duration) {
+                return res.status(400).json({ error: "Faltam informações para gerar o sermão." });
+            }
+            if (!process.env.OPENAI_API_KEY) {
+                console.error("Erro: Chave da API OpenAI não configurada.");
+                return res.status(500).json({ error: "Erro interno: Chave da API não encontrada." });
+            }
+
+            const promptConfig = getPromptConfig(sermonType, duration);
+
+            const prompt = `Gere um sermão do tipo ${sermonType} para um público de ${audience} sobre o tema "${topic}". ${promptConfig.instruction} ${promptConfig.structure}`;
+            const modelToUse = promptConfig.model;
+            const temperature = promptConfig.temperature;
+            const maxTokens = promptConfig.max_tokens;
+            
+            console.log(`[OpenAI] Enviando requisição. Modelo: ${modelToUse}, Temperatura: ${temperature}`);
+
+            const data = await fetchWithTimeout( "https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}`},
+                body: JSON.stringify({
+                    model: modelToUse,
+                    messages: [{ role: "user", content: prompt }],
+                    max_tokens: maxTokens,
+                    temperature: temperature,
+                }),
+            });
+            
+            console.log(`[OpenAI] Sermão para [${req.session.user.email}] gerado com sucesso!`);
+            
+            await logSermonActivity({
+                user_email: req.session.user.email,
+                sermon_topic: topic,
+                sermon_audience: audience,
+                sermon_type: sermonType,
+                sermon_duration: duration,
+                model_used: modelToUse,
+                prompt_instruction: promptConfig.structure
+            });
+
+            delete req.session.sermonData;
+            res.json({ sermon: data.choices[0].message.content });
+        }
+    } catch (error) {
+        console.error("[Erro ao gerar sermão]", error);
+        return res.status(500).json({ error: "Erro ao gerar sermão após várias tentativas." });
+    }
+});
 
 // --- 5. INICIALIZAÇÃO DO SERVIDOR ---
 app.listen(port, () => {
