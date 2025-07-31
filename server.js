@@ -1,4 +1,4 @@
-// server.js - Versão Final 5.2 (Fase 1 Completa)
+// server.js - Versão Final 6.0 com Matriz de Prompts Dinâmicos
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -72,7 +72,7 @@ const checkAccessAndLogin = (req, res, customer) => {
     }
 
     if (customer.status === 'paid') {
-        req.session.loginAttempts = 0; // Zera as tentativas no sucesso
+        req.session.loginAttempts = 0;
         req.session.user = { email: customer.email, status: 'paid' };
         return res.redirect('/app');
     }
@@ -216,10 +216,15 @@ app.get("/admin/view-data", async (req, res) => {
             <style>
                 body { font-family: sans-serif; } table { border-collapse: collapse; width: 100%; }
                 th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }
-                .actions a { margin-right: 10px; }
+                .actions a { margin-right: 10px; } .nav-links a { margin-right: 20px; }
             </style>
-            <h1>Visualização de Clientes (${rows.length} registros)</h1>
-            <p><a href="/admin/view-access-control?key=${key}">Ver Lista de Acesso Manual (Vitalícios)</a></p>
+            <h1>Painel de Administração</h1>
+            <div class="nav-links">
+                <a href="/admin/view-data?key=${key}"><b>Clientes da Eduzz</b></a>
+                <a href="/admin/view-access-control?key=${key}">Acesso Manual (Vitalícios)</a>
+                <a href="/admin/view-activity?key=${key}">Log de Atividades</a>
+            </div>
+            <h2>Clientes da Eduzz (${rows.length} registros)</h2>
             <table><tr><th>Email</th><th>Nome</th><th>Telefone (últimos 6)</th><th>Status</th><th>Última Atualização (Brasília)</th><th>Expira em (Brasília)</th><th>Ações</th></tr>`;
 
         rows.forEach(customer => {
@@ -338,9 +343,15 @@ app.get("/admin/view-access-control", async (req, res) => {
             <style>
                 body { font-family: sans-serif; } table { border-collapse: collapse; width: 100%; }
                 th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }
+                .nav-links a { margin-right: 20px; }
             </style>
-            <h1>Visualização de Controle de Acesso Manual (${rows.length} registros)</h1>
-            <p><a href="/admin/view-data?key=${key}">Ver Lista de Clientes da Eduzz</a></p>
+            <h1>Painel de Administração</h1>
+            <div class="nav-links">
+                <a href="/admin/view-data?key=${key}">Clientes da Eduzz</a>
+                <a href="/admin/view-access-control?key=${key}"><b>Acesso Manual (Vitalícios)</b></a>
+                <a href="/admin/view-activity?key=${key}">Log de Atividades</a>
+            </div>
+            <h2>Acesso Manual (Vitalícios) (${rows.length} registros)</h2>
             <table><tr><th>Email</th><th>Permissão</th><th>Motivo</th><th>Criado em (Brasília)</th></tr>`;
 
         rows.forEach(rule => {
@@ -363,10 +374,142 @@ app.get("/admin/view-access-control", async (req, res) => {
     }
 });
 
-app.get("/admin/import-from-csv", async (req, res) => {
-    // ... (Esta rota permanece a mesma) ...
+app.get("/admin/view-activity", async (req, res) => {
+    const { key } = req.query;
+    if (key !== process.env.ADMIN_KEY) {
+        return res.status(403).send("<h1>Acesso Negado</h1><p>Chave de acesso inválida.</p>");
+    }
+    try {
+        const query = 'SELECT * FROM activity_log ORDER BY created_at DESC LIMIT 500';
+        const { rows } = await pool.query(query);
+
+        let html = `
+            <style>
+                body { font-family: sans-serif; } table { border-collapse: collapse; width: 100%; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }
+                .nav-links a { margin-right: 20px; }
+            </style>
+            <h1>Painel de Administração</h1>
+            <div class="nav-links">
+                <a href="/admin/view-data?key=${key}">Clientes da Eduzz</a>
+                <a href="/admin/view-access-control?key=${key}">Acesso Manual (Vitalícios)</a>
+                <a href="/admin/view-activity?key=${key}"><b>Log de Atividades</b></a>
+            </div>
+            <h2>Log de Atividades (Últimos ${rows.length} sermões gerados)</h2>
+            <table><tr><th>Email</th><th>Tema</th><th>Público</th><th>Tipo</th><th>Duração</th><th>Modelo Usado</th><th>Gerado em (Brasília)</th></tr>`;
+
+        rows.forEach(log => {
+            const dataCriacao = log.created_at ? new Date(log.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'N/A';
+            
+            html += `
+                <tr>
+                    <td>${log.user_email}</td>
+                    <td>${log.sermon_topic}</td>
+                    <td>${log.sermon_audience}</td>
+                    <td>${log.sermon_type}</td>
+                    <td>${log.sermon_duration}</td>
+                    <td>${log.model_used}</td>
+                    <td>${dataCriacao}</td>
+                </tr>`;
+        });
+
+        html += '</table>';
+        res.send(html);
+    } catch (error) {
+        console.error("Erro ao buscar log de atividades:", error);
+        res.status(500).send("<h1>Erro ao buscar dados</h1>");
+    }
 });
 
+app.get("/admin/import-from-csv", async (req, res) => {
+    const { key, plan_type } = req.query;
+    if (key !== process.env.ADMIN_KEY) {
+        return res.status(403).send("<h1>Acesso Negado</h1><p>Chave de acesso inválida.</p>");
+    }
+    if (!['anual', 'vitalicio'].includes(plan_type)) {
+        return res.status(400).send("<h1>Erro</h1><p>Você precisa especificar o tipo de plano na URL. Adicione '?plan_type=anual' ou '?plan_type=vitalicio' ao final do endereço.</p>");
+    }
+
+    const CSV_FILE_PATH = path.join(__dirname, 'lista-clientes.csv');
+    if (!fs.existsSync(CSV_FILE_PATH)) {
+        return res.status(404).send("<h1>Erro</h1><p>Arquivo 'lista-clientes.csv' não encontrado na raiz do projeto.</p>");
+    }
+
+    const clientsToImport = [];
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.write(`<h1>Iniciando importação para plano: ${plan_type}...</h1>`);
+
+    function normalizePhone(phoneString) {
+        if (!phoneString || typeof phoneString !== 'string') return null;
+        const digitsOnly = phoneString.replace(/\D/g, '');
+        if (digitsOnly.length < 6) return null;
+        return digitsOnly.slice(-6);
+    }
+
+    fs.createReadStream(CSV_FILE_PATH)
+      .pipe(csv({ separator: ';' }))
+      .on('data', (row) => {
+        const email = row['Cliente / E-mail'];
+        const name = row['Cliente / Nome'] || row['Cliente / Razão-Social'];
+        const phone = row['Cliente / Fones'];
+        const purchaseDateStr = row['Data de Criação'];
+        const status = row['Status'];
+
+        if (email && purchaseDateStr && status && status.toLowerCase() === 'paga') {
+          clientsToImport.push({ email, name, phone, purchaseDateStr });
+        }
+      })
+      .on('end', async () => {
+        res.write(`<p>Leitura do CSV concluída. ${clientsToImport.length} clientes válidos encontrados.</p>`);
+        if (clientsToImport.length === 0) return res.end('<p>Nenhum cliente para importar. Encerrando.</p>');
+
+        const client = await pool.connect();
+        try {
+            res.write('<p>Iniciando transação com o banco de dados...</p>');
+            await client.query('BEGIN');
+
+            for (const [index, customerData] of clientsToImport.entries()) {
+                if (plan_type === 'anual') {
+                    const [datePart, timePart] = customerData.purchaseDateStr.split(' ');
+                    const [day, month, year] = datePart.split('/');
+                    const purchaseDate = new Date(`${year}-${month}-${day}T${timePart || '00:00:00'}`);
+                    const expirationDate = new Date(purchaseDate);
+                    expirationDate.setDate(expirationDate.getDate() + 365);
+                    
+                    const query = `
+                        INSERT INTO customers (email, name, phone, status, expires_at, updated_at)
+                        VALUES ($1, $2, $3, 'paid', $4, NOW())
+                        ON CONFLICT (email) DO UPDATE SET 
+                            name = COALESCE(EXCLUDED.name, customers.name),
+                            phone = COALESCE(EXCLUDED.phone, customers.phone),
+                            expires_at = EXCLUDED.expires_at,
+                            updated_at = NOW();`;
+                    await client.query(query, [customerData.email.toLowerCase(), customerData.name, normalizePhone(customerData.phone), expirationDate.toISOString()]);
+                } else if (plan_type === 'vitalicio') {
+                    const query = `
+                        INSERT INTO access_control (email, permission, reason)
+                        VALUES ($1, 'allow', 'Importado via CSV - Vitalício')
+                        ON CONFLICT (email) DO NOTHING;`;
+                    await client.query(query, [customerData.email.toLowerCase()]);
+                }
+                 if ((index + 1) % 50 === 0) {
+                     res.write(`<p>${index + 1} de ${clientsToImport.length} clientes processados...</p>`);
+                }
+            }
+
+            await client.query('COMMIT');
+            res.end(`<h2>✅ Sucesso!</h2><p>${clientsToImport.length} clientes foram importados/atualizados para o plano ${plan_type}.</p>`);
+        } catch (e) {
+            await client.query('ROLLBACK');
+            res.end(`<h2>❌ ERRO!</h2><p>Ocorreu um problema durante a importação. Nenhuma alteração foi salva. Verifique os logs do servidor.</p>`);
+            console.error(e);
+        } finally {
+            client.release();
+        }
+      });
+});
+
+// --- 4. ROTAS PROTEGIDAS (Apenas para usuários logados) ---
 app.get("/app", requireLogin, (req, res) => {
     res.sendFile(path.join(__dirname, "public", "app.html"));
 });
@@ -428,40 +571,13 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                 return res.status(500).json({ error: "Erro interno: Chave da API não encontrada." });
             }
 
-            // LÓGICA DE ROTEAMENTO DE MODELOS E TEMPERATURA
-            let modelToUse;
-            let temperature;
-            let maxTokens;
-            let targetMinutes;
+            // MATRIZ DE PROMPTS DINÂMICOS
+            const promptConfig = getPromptConfig(sermonType, duration);
 
-            const durationMap = {
-                "Entre 1 e 10 min": { size: 'small', minutes: 8 },
-                "Entre 10 e 20 min": { size: 'small', minutes: 15 },
-                "Entre 20 e 30 min": { size: 'medium', minutes: 25 },
-                "Entre 30 e 40 min": { size: 'medium', minutes: 35 },
-                "Entre 40 e 50 min": { size: 'large', minutes: 45 },
-                "Entre 50 e 60 min": { size: 'large', minutes: 55 },
-                "Acima de 1 hora": { size: 'large', minutes: 65 }
-            };
-            
-            const durationConfig = durationMap[duration] || { size: 'medium', minutes: 30 };
-
-            if (durationConfig.size === 'small') {
-                modelToUse = process.env.OPENAI_MODEL_SMALL || 'gpt-4o-mini';
-                temperature = parseFloat(process.env.OPENAI_TEMP_SMALL) || 0.7;
-                maxTokens = 1500;
-            } else if (durationConfig.size === 'medium') {
-                modelToUse = process.env.OPENAI_MODEL_MEDIUM || 'gpt-4o-mini';
-                temperature = parseFloat(process.env.OPENAI_TEMP_MEDIUM) || 0.7;
-                maxTokens = 2500;
-            } else { // large
-                modelToUse = process.env.OPENAI_MODEL_LARGE || 'gpt-4o';
-                temperature = parseFloat(process.env.OPENAI_TEMP_LARGE) || 0.75;
-                maxTokens = 3500;
-            }
-            targetMinutes = durationConfig.minutes;
-
-            const prompt = `Tema: ${topic}, Público: ${audience}, Tipo de Sermão: ${sermonType}, Duração: aproximadamente ${targetMinutes} minutos. Gere um sermão completo com exegese e aplicação prática.`;
+            const prompt = `Gere um sermão do tipo ${sermonType} para um público de ${audience} sobre o tema "${topic}". ${promptConfig.instruction} ${promptConfig.structure}`;
+            const modelToUse = promptConfig.model;
+            const temperature = promptConfig.temperature;
+            const maxTokens = promptConfig.max_tokens;
             
             console.log(`[OpenAI] Enviando requisição. Modelo: ${modelToUse}, Temperatura: ${temperature}`);
 
@@ -478,7 +594,6 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
             
             console.log(`[OpenAI] Sermão para [${req.session.user.email}] gerado com sucesso!`);
             
-            // Log de atividade
             await logSermonActivity({
                 user_email: req.session.user.email,
                 sermon_topic: topic,
@@ -497,7 +612,68 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
     }
 });
 
+function getPromptConfig(sermonType, duration) {
+    // Lógica para selecionar a estrutura e os parâmetros corretos
+    // ... (esta função será longa, contendo a matriz de 21 prompts)
+    // Para manter o código legível, vou criar a função completa
+    
+    const configs = {
+        'Expositivo': {
+            'Entre 1 e 10 min': { instruction: 'Escreva entre 200 e 450 tokens.', structure: 'Siga esta estrutura: 1. Tema da Mensagem. 2. Brevíssima explicação do contexto do texto bíblico. 3. Brevíssima Aplicação Prática.', max_tokens: 450 },
+            'Entre 10 e 20 min': { instruction: 'Escreva entre 450 e 750 tokens.', structure: 'Siga esta estrutura: 1. Brevíssima Introdução. 2. Brevíssima explicação do contexto do texto bíblico. 3. Brevíssima explicação da ideia central do texto bíblico. 4. Brevíssima Aplicação. 5. Brevíssima Chamada à Ação.', max_tokens: 750 },
+            'Entre 20 e 30 min': { instruction: 'Escreva entre 750 e 1200 tokens.', structure: 'Siga esta estrutura: 1. Breve Introdução. 2. Breve Contexto histórico-cultural do texto bíblico. 3. Breve Exegese do bloco textual. 4. Breve Aplicação Prática. 5. Breve Conclusão.', max_tokens: 1200 },
+            'Entre 30 e 40 min': { instruction: 'Escreva entre 1200 e 1900 tokens.', structure: 'Siga esta estrutura: 1. Introdução com ilustração. 2. Contexto do livro e da passagem bíblica. 3. Exegese verso a verso, explicando o fluxo do argumento. 4. Aplicação para a vida pessoal. 5. Conclusão.', max_tokens: 1900 },
+            'Entre 40 e 50 min': { instruction: 'Escreva entre 1900 e 2500 tokens.', structure: 'Siga esta estrutura: 1. Introdução detalhada. 2. Contexto histórico e teológico. 3. Exegese aprofundada do texto bíblico, com significado de uma palavra-chave no original. 4. Uma Ilustração. 5. Aplicações (pessoal e comunitária). 6. Conclusão com apelo.', max_tokens: 2500 },
+            'Entre 50 e 60 min': { instruction: 'Escreva entre 2500 e 3500 tokens.', structure: 'Siga esta estrutura: 1. Introdução. 2. Grande Contexto Bíblico-Teológico. 3. Exegese minuciosa do texto bíblico com análise de palavras no original e referências cruzadas. 4. Múltiplas Ilustrações. 5. Aplicações multi-pastorais. 6. Conclusão e Oração.', max_tokens: 3500 },
+            'Acima de 1 hora': { instruction: 'Escreva entre 3500 e 5000 tokens.', structure: 'Siga esta estrutura: 1. Introdução. 2. Discussão teológica. 3. Exegese exaustiva do texto bíblico, com múltiplas análises. 4. Apontamentos para Cristo. 5. Aplicações profundas. 6. Conclusão missional.', max_tokens: 5000 }
+        },
+        'Textual': {
+            'Entre 1 e 10 min': { instruction: 'Escreva entre 200 e 450 tokens.', structure: 'Siga esta estrutura: 1. Leitura do Texto Bíblico-Base. 2. Brevíssima explicação da ideia central. 3. Brevíssima Aplicação.', max_tokens: 450 },
+            'Entre 10 e 20 min': { instruction: 'Escreva entre 450 e 750 tokens.', structure: 'Siga esta estrutura: 1. Brevíssima Introdução. 2. Brevíssima Leitura do Texto Bíblico. 3. Brevíssima explicação do tema principal. 4. Brevíssima Aplicação. 5. Brevíssima Conclusão.', max_tokens: 750 },
+            'Entre 20 e 30 min': { instruction: 'Escreva entre 750 e 1200 tokens.', structure: 'Siga esta estrutura: 1. Breve Introdução. 2. Breve leitura e divisão do texto bíblico em 2 pontos. 3. Breve explicação de cada ponto. 4. Breve Aplicação geral. 5. Breve Conclusão.', max_tokens: 1200 },
+            'Entre 30 e 40 min': { instruction: 'Escreva entre 1200 e 1900 tokens.', structure: 'Siga esta estrutura: 1. Introdução. 2. Divisão do texto bíblico em 3 pontos principais. 3. Desenvolvimento de cada ponto com uma explicação clara. 4. Aplicação para cada ponto. 5. Conclusão.', max_tokens: 1900 },
+            'Entre 40 e 50 min': { instruction: 'Escreva entre 1900 e 2500 tokens.', structure: 'Siga esta estrutura: 1. Introdução com ilustração. 2. Contexto da passagem bíblica. 3. Divisão do texto bíblico em 3 pontos. 4. Desenvolvimento de cada ponto com referências e uma breve exegese. 5. Aplicação. 6. Conclusão com apelo.', max_tokens: 2500 },
+            'Entre 50 e 60 min': { instruction: 'Escreva entre 2500 e 3500 tokens.', structure: 'Siga esta estrutura: 1. Introdução. 2. Contexto. 3. Divisão do texto bíblico em pontos lógicos. 4. Desenvolvimento aprofundado de cada ponto, com análise de palavras e ilustrações. 5. Aplicações. 6. Conclusão e Oração.', max_tokens: 3500 },
+            'Acima de 1 hora': { instruction: 'Escreva entre 3500 e 5000 tokens.', structure: 'Siga esta estrutura: 1. Introdução. 2. Contexto. 3. Divisão do texto bíblico em todos os seus pontos naturais. 4. Desenvolvimento exaustivo de cada ponto, com exegese e referências cruzadas. 5. Múltiplas Aplicações. 6. Conclusão.', max_tokens: 5000 }
+        },
+        'Temático': {
+            'Entre 1 e 10 min': { instruction: 'Escreva entre 200 e 450 tokens.', structure: 'Siga esta estrutura: 1. Apresentação do Tema. 2. Brevíssima explanação com um versículo bíblico principal. 3. Brevíssima Aplicação.', max_tokens: 450 },
+            'Entre 10 e 20 min': { instruction: 'Escreva entre 450 e 750 tokens.', structure: 'Siga esta estrutura: 1. Brevíssima Introdução ao Tema. 2. Brevíssimo desenvolvimento com base em 2 textos bíblicos. 3. Brevíssima Aplicação. 4. Brevíssima Conclusão.', max_tokens: 750 },
+            'Entre 20 e 30 min': { instruction: 'Escreva entre 750 e 1200 tokens.', structure: 'Siga esta estrutura: 1. Breve Introdução. 2. Breve desenvolvimento do tema usando 2 pontos, cada um com um texto bíblico de apoio. 3. Breve Aplicação. 4. Breve Conclusão.', max_tokens: 1200 },
+            'Entre 30 e 40 min': { instruction: 'Escreva entre 1200 e 1900 tokens.', structure: 'Siga esta estrutura: 1. Introdução ao tema. 2. Primeiro Ponto (com um texto bíblico de apoio). 3. Segundo Ponto (com outro texto bíblico de apoio). 4. Aplicação unificada. 5. Conclusão.', max_tokens: 1900 },
+            'Entre 40 e 50 min': { instruction: 'Escreva entre 1900 e 2500 tokens.', structure: 'Siga esta estrutura: 1. Introdução com ilustração. 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico e uma breve explicação. 3. Aplicações práticas. 4. Conclusão.', max_tokens: 2500 },
+            'Entre 50 e 60 min': { instruction: 'Escreva entre 2500 e 3500 tokens.', structure: 'Siga esta estrutura: 1. Introdução. 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico, breve exegese e uma ilustração. 3. Aplicações para cada ponto. 4. Conclusão com apelo.', max_tokens: 3500 },
+            'Acima de 1 hora': { instruction: 'Escreva entre 3500 e 5000 tokens.', structure: 'Siga esta estrutura: 1. Introdução. 2. Exploração profunda do tema através de múltiplas passagens bíblicas. 3. Análise teológica e prática. 4. Ilustrações e aplicações robustas. 5. Conclusão e oração.', max_tokens: 5000 }
+        }
+    };
+
+    const config = (configs[sermonType] && configs[sermonType][duration]) ? configs[sermonType][duration] : configs['Expositivo']['Entre 20 e 30 min']; // Fallback seguro
+    
+    let model;
+    let temp;
+    
+    if (config.max_tokens <= 1200) { // Pequeno
+        model = process.env.OPENAI_MODEL_SMALL || 'gpt-4o-mini';
+        temp = parseFloat(process.env.OPENAI_TEMP_SMALL) || 0.7;
+    } else if (config.max_tokens <= 2500) { // Médio
+        model = process.env.OPENAI_MODEL_MEDIUM || 'gpt-4o-mini';
+        temp = parseFloat(process.env.OPENAI_TEMP_MEDIUM) || 0.7;
+    } else { // Grande
+        model = process.env.OPENAI_MODEL_LARGE || 'gpt-4o';
+        temp = parseFloat(process.env.OPENAI_TEMP_LARGE) || 0.75;
+    }
+
+    return {
+        instruction: config.instruction,
+        structure: config.structure,
+        max_tokens: config.max_tokens,
+        model: model,
+        temperature: temp
+    };
+}
+
+
 // --- 5. INICIALIZAÇÃO DO SERVIDOR ---
 app.listen(port, () => {
     console.log(`🚀 Servidor rodando na porta ${port}`);
-});
+});```
