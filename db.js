@@ -1,4 +1,4 @@
-// db.js - Versão 3.0 Final com Estrutura Completa
+// db.js - Versão Final (Fase 1) com Estrutura Completa
 const { Pool } = require('pg');
 
 const pool = new Pool({
@@ -50,21 +50,36 @@ const pool = new Pool({
     `);
     console.log('✔️ Tabela "user_sessions" pronta.');
 
+    // NOVA Tabela para registrar atividades
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS activity_log (
+        id SERIAL PRIMARY KEY,
+        user_email TEXT NOT NULL,
+        sermon_topic TEXT,
+        sermon_audience TEXT,
+        sermon_type TEXT,
+        sermon_duration TEXT,
+        model_used TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+      );
+    `);
+    console.log('✔️ Tabela "activity_log" pronta.');
+
   } catch (err) {
     console.error('❌ Erro ao criar as tabelas:', err);
   }
 })();
 
 /**
- * Normaliza um número de telefone, pegando apenas os últimos 9 dígitos.
+ * Normaliza um número de telefone, pegando apenas os últimos 6 dígitos.
  * @param {string} phoneString - O número de telefone original.
  * @returns {string|null} O número normalizado ou null.
  */
 function normalizePhone(phoneString) {
     if (!phoneString || typeof phoneString !== 'string') return null;
     const digitsOnly = phoneString.replace(/\D/g, '');
-    if (digitsOnly.length < 8) return null;
-    return digitsOnly.slice(-9); // Pega os últimos 9 dígitos
+    if (digitsOnly.length < 6) return null;
+    return digitsOnly.slice(-6);
 }
 
 /**
@@ -100,7 +115,6 @@ async function getCustomerRecordByPhone(phone) {
   const normalizedPhone = normalizePhone(phone);
   if (!normalizedPhone) return null;
   const { rows } = await pool.query(`SELECT * FROM customers WHERE phone = $1`, [normalizedPhone]);
-  // Retorna apenas o primeiro cliente encontrado com aquele telefone, se houver múltiplos
   return rows[0] || null;
 }
 
@@ -112,10 +126,23 @@ async function getManualPermission(email) {
     return rows[0]?.permission || null;
 }
 
+/**
+ * Salva um registro de atividade de geração de sermão.
+ */
+async function logSermonActivity(details) {
+    const { user_email, sermon_topic, sermon_audience, sermon_type, sermon_duration, model_used } = details;
+    const query = `
+        INSERT INTO activity_log (user_email, sermon_topic, sermon_audience, sermon_type, sermon_duration, model_used)
+        VALUES ($1, $2, $3, $4, $5, $6)
+    `;
+    await pool.query(query, [user_email, sermon_topic, sermon_audience, sermon_type, sermon_duration, model_used]);
+}
+
 module.exports = {
   pool,
   markStatus,
   getCustomerRecordByEmail,
   getCustomerRecordByPhone,
-  getManualPermission
+  getManualPermission,
+  logSermonActivity
 };
