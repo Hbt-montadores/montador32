@@ -676,4 +676,4 @@ function getPromptConfig(sermonType, duration) {
 // --- 5. INICIALIZAÇÃO DO SERVIDOR ---
 app.listen(port, () => {
     console.log(`🚀 Servidor rodando na porta ${port}`);
-});```
+});
