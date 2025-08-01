@@ -1,3 +1,29 @@
+// --- LÓGICA DE INSTALAÇÃO DO APP (PWA) ---
+let deferredPrompt; 
+const installButton = document.getElementById('install-button');
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  if (installButton) {
+    installButton.style.display = 'block';
+  }
+});
+
+if (installButton) {
+  installButton.addEventListener('click', async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log(`Ação do usuário na instalação: ${outcome}`);
+      deferredPrompt = null;
+      installButton.style.display = 'none';
+    }
+  });
+}
+// --- FIM DA LÓGICA DE INSTALAÇÃO ---
+
+
 document
   .getElementById("next-step-button")
   .addEventListener("click", async () => {
@@ -38,7 +64,6 @@ function showOptions(data) {
 }
 
 let loadingInterval;
-// MUDANÇA: Lista de mensagens conforme sua escolha
 const longSermonMessages = [
     "Consultando as referências e o contexto bíblico.",
     "Estruturando a espinha dorsal da sua mensagem.",
@@ -62,20 +87,17 @@ async function nextStep(response, step) {
   const longSermonTriggers = ["Entre 40 e 50 min", "Entre 50 e 60 min", "Acima de 1 hora"];
 
   if (step === 4 && longSermonTriggers.includes(response)) {
-    // CASO ESPECIAL: Sermão longo
     loadingTextElement.textContent = "Você escolheu um sermão mais longo. A preparação pode levar um pouco mais de tempo, mas o resultado valerá a pena!";
     
-    // Inicia o ciclo de mensagens detalhadas após um breve delay
     let messageIndex = 0;
     setTimeout(() => {
         loadingTextElement.textContent = longSermonMessages[messageIndex];
         loadingInterval = setInterval(() => {
             messageIndex = (messageIndex + 1) % longSermonMessages.length;
             loadingTextElement.textContent = longSermonMessages[messageIndex];
-        }, 8000); // Muda a mensagem a cada 8 segundos
-    }, 4000); // Delay de 4 segundos para a primeira mensagem
+        }, 8000); 
+    }, 4000); 
   } else {
-    // CASO PADRÃO: Sermões mais curtos
     loadingTextElement.textContent = "Gerando sermão, por favor aguarde...";
   }
 
