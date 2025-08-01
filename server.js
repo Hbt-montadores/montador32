@@ -1,4 +1,4 @@
-// server.js - Versão Final (Refinada em 31/07)
+// server.js - Versão Final e Definitiva (com Matriz de Prompts v4)
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -203,7 +203,6 @@ app.post("/eduzz/webhook", async (req, res) => {
   }
 });
 
-// FUNÇÃO PARA CRIAR O CABEÇALHO DO PAINEL DE ADMIN
 const getAdminPanelHeader = (key, activePage) => {
     return `
         <style>
@@ -254,11 +253,74 @@ app.get("/admin/view-data", async (req, res) => {
 });
 
 app.get("/admin/edit-customer", async (req, res) => {
-    // ... (Esta rota permanece a mesma) ...
+    const { key, email } = req.query;
+    if (key !== process.env.ADMIN_KEY) { return res.status(403).send("Acesso Negado"); }
+    if (!email) { return res.status(400).send("E-mail do cliente não fornecido."); }
+
+    try {
+        const customer = await getCustomerRecordByEmail(email);
+        if (!customer) { return res.status(404).send("Cliente não encontrado."); }
+
+        const expires_at_value = customer.expires_at 
+            ? new Date(new Date(customer.expires_at).getTime() - (3 * 60 * 60 * 1000)).toISOString().slice(0, 16)
+            : "";
+
+        res.send(`
+            <style>
+                body { font-family: sans-serif; max-width: 600px; margin: 40px auto; }
+                form div { margin-bottom: 15px; }
+                label { display: block; margin-bottom: 5px; }
+                input, select { width: 100%; padding: 8px; font-size: 1em; }
+                button { padding: 10px 15px; font-size: 1em; cursor: pointer; }
+            </style>
+            <h1>Editar Cliente: ${customer.email}</h1>
+            <form action="/admin/update-customer" method="POST">
+                <input type="hidden" name="key" value="${key}">
+                <input type="hidden" name="email" value="${customer.email}">
+
+                <div><label for="name">Nome:</label><input type="text" id="name" name="name" value="${customer.name || ''}"></div>
+                <div><label for="phone">Telefone:</label><input type="text" id="phone" name="phone" value="${customer.phone || ''}"></div>
+                
+                <div><label for="status">Status:</label>
+                    <select id="status" name="status">
+                        <option value="paid" ${customer.status === 'paid' ? 'selected' : ''}>paid</option>
+                        <option value="overdue" ${customer.status === 'overdue' ? 'selected' : ''}>overdue</option>
+                        <option value="canceled" ${customer.status === 'canceled' ? 'selected' : ''}>canceled</option>
+                    </select>
+                </div>
+
+                <div><label for="expires_at">Data de Expiração (deixe em branco para controle da Eduzz):</label>
+                <input type="datetime-local" id="expires_at" name="expires_at" value="${expires_at_value}"></div>
+                
+                <button type="submit">Salvar Alterações</button>
+            </form>
+            <br>
+            <a href="/admin/view-data?key=${key}">Voltar para a lista</a>
+        `);
+    } catch (error) {
+        console.error("Erro ao carregar formulário de edição:", error);
+        res.status(500).send("Erro interno.");
+    }
 });
 
 app.post("/admin/update-customer", async (req, res) => {
-    // ... (Esta rota permanece a mesma) ...
+    const { key, email, name, phone, status, expires_at } = req.body;
+    if (key !== process.env.ADMIN_KEY) { return res.status(403).send("Acesso Negado"); }
+    
+    try {
+        const expirationDate = expires_at ? new Date(expires_at).toISOString() : null;
+
+        const query = `
+            UPDATE customers 
+            SET name = $1, phone = $2, status = $3, expires_at = $4, updated_at = NOW() 
+            WHERE email = $5
+        `;
+        await pool.query(query, [name, phone, status, expirationDate, email]);
+        res.redirect(`/admin/view-data?key=${key}`);
+    } catch (error) {
+        console.error("Erro ao atualizar cliente:", error);
+        res.status(500).send("Erro ao atualizar dados do cliente.");
+    }
 });
 
 app.get("/admin/view-access-control", async (req, res) => {
@@ -304,7 +366,91 @@ app.get("/admin/view-activity", async (req, res) => {
 });
 
 app.get("/admin/import-from-csv", async (req, res) => {
-    // ... (Esta rota permanece a mesma) ...
+    const { key, plan_type } = req.query;
+    if (key !== process.env.ADMIN_KEY) {
+        return res.status(403).send("<h1>Acesso Negado</h1><p>Chave de acesso inválida.</p>");
+    }
+    if (!['anual', 'vitalicio'].includes(plan_type)) {
+        return res.status(400).send("<h1>Erro</h1><p>Você precisa especificar o tipo de plano na URL. Adicione '?plan_type=anual' ou '?plan_type=vitalicio' ao final do endereço.</p>");
+    }
+
+    const CSV_FILE_PATH = path.join(__dirname, 'lista-clientes.csv');
+    if (!fs.existsSync(CSV_FILE_PATH)) {
+        return res.status(404).send("<h1>Erro</h1><p>Arquivo 'lista-clientes.csv' não encontrado na raiz do projeto.</p>");
+    }
+
+    const clientsToImport = [];
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.write(`<h1>Iniciando importação para plano: ${plan_type}...</h1>`);
+
+    function normalizePhone(phoneString) {
+        if (!phoneString || typeof phoneString !== 'string') return null;
+        const digitsOnly = phoneString.replace(/\D/g, '');
+        if (digitsOnly.length < 6) return null;
+        return digitsOnly.slice(-6);
+    }
+
+    fs.createReadStream(CSV_FILE_PATH)
+      .pipe(csv({ separator: ';' }))
+      .on('data', (row) => {
+        const email = row['Cliente / E-mail'];
+        const name = row['Cliente / Nome'] || row['Cliente / Razão-Social'];
+        const phone = row['Cliente / Fones'];
+        const purchaseDateStr = row['Data de Criação'];
+        const status = row['Status'];
+
+        if (email && purchaseDateStr && status && status.toLowerCase() === 'paga') {
+          clientsToImport.push({ email, name, phone, purchaseDateStr });
+        }
+      })
+      .on('end', async () => {
+        res.write(`<p>Leitura do CSV concluída. ${clientsToImport.length} clientes válidos encontrados.</p>`);
+        if (clientsToImport.length === 0) return res.end('<p>Nenhum cliente para importar. Encerrando.</p>');
+
+        const client = await pool.connect();
+        try {
+            res.write('<p>Iniciando transação com o banco de dados...</p>');
+            await client.query('BEGIN');
+
+            for (const [index, customerData] of clientsToImport.entries()) {
+                if (plan_type === 'anual') {
+                    const [datePart, timePart] = customerData.purchaseDateStr.split(' ');
+                    const [day, month, year] = datePart.split('/');
+                    const purchaseDate = new Date(`${year}-${month}-${day}T${timePart || '00:00:00'}`);
+                    const expirationDate = new Date(purchaseDate);
+                    expirationDate.setDate(expirationDate.getDate() + 365);
+                    
+                    const query = `
+                        INSERT INTO customers (email, name, phone, status, expires_at, updated_at)
+                        VALUES ($1, $2, $3, 'paid', $4, NOW())
+                        ON CONFLICT (email) DO UPDATE SET 
+                            name = COALESCE(EXCLUDED.name, customers.name),
+                            phone = COALESCE(EXCLUDED.phone, customers.phone),
+                            expires_at = EXCLUDED.expires_at,
+                            updated_at = NOW();`;
+                    await client.query(query, [customerData.email.toLowerCase(), customerData.name, customerData.phone, expirationDate.toISOString()]);
+                } else if (plan_type === 'vitalicio') {
+                    const query = `
+                        INSERT INTO access_control (email, permission, reason)
+                        VALUES ($1, 'allow', 'Importado via CSV - Vitalício')
+                        ON CONFLICT (email) DO NOTHING;`;
+                    await client.query(query, [customerData.email.toLowerCase()]);
+                }
+                 if ((index + 1) % 50 === 0) {
+                     res.write(`<p>${index + 1} de ${clientsToImport.length} clientes processados...</p>`);
+                }
+            }
+
+            await client.query('COMMIT');
+            res.end(`<h2>✅ Sucesso!</h2><p>${clientsToImport.length} clientes foram importados/atualizados para o plano ${plan_type}.</p>`);
+        } catch (e) {
+            await client.query('ROLLBACK');
+            res.end(`<h2>❌ ERRO!</h2><p>Ocorreu um problema durante a importação. Nenhuma alteração foi salva. Verifique os logs do servidor.</p>`);
+            console.error(e);
+        } finally {
+            client.release();
+        }
+      });
 });
 
 // --- 4. ROTAS PROTEGIDAS (Apenas para usuários logados) ---
@@ -313,58 +459,73 @@ app.get("/app", requireLogin, (req, res) => {
 });
 
 async function fetchWithTimeout(url, options, timeout = 30000) {
-    // ... (Esta função permanece a mesma) ...
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error("Timeout: A requisição para a OpenAI demorou muito."));
+        }, timeout);
+
+        fetch(url, options)
+            .then(response => {
+                clearTimeout(timer);
+                if (!response.ok) {
+                    return response.json().then(errorBody => {
+                        reject(new Error(`HTTP error! Status: ${response.status}. Detalhes: ${JSON.stringify(errorBody)}`));
+                    }).catch(() => {
+                        reject(new Error(`HTTP error! Status: ${response.status}.`));
+                    });
+                }
+                return response.json();
+            })
+            .then(resolve)
+            .catch(reject);
+    });
 }
 
 function getPromptConfig(sermonType, duration) {
+    const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '');
     const configs = {
         'Expositivo': {
             'Entre 1 e 10 min': { instruction: 'Escreva um sermão de 1-10 minutos.', structure: 'Siga esta estrutura: 1. Uma linha objetiva com o Tema. 2. Uma linha objetiva com o contexto do texto bíblico. 3. Uma linha objetiva com a Aplicação Prática.', max_tokens: 450 },
-            'Entre 10 e 20 min': { instruction: 'Escreva um sermão de 10-20 minutos.', structure: 'Siga esta estrutura: 1. Uma linha de Introdução. 2. Um parágrafo muitíssimo breve e objetivo sobre o contexto. 3. Um parágrafo muitíssimo breve e objetivo com a explicação da ideia central. 4. Um parágrafo muitíssimo breve e objetivo de Aplicação. 5. Uma linha de Chamada à Ação.', max_tokens: 750 },
-            'Entre 20 e 30 min': { instruction: 'Escreva um sermão de 20-30 minutos.', structure: 'Siga esta estrutura: 1. Breve Introdução. 2. Breve Contexto histórico-cultural do texto bíblico. 3. Breve Exegese do bloco textual. 4. Breve Aplicação Prática. 5. Breve Conclusão.', max_tokens: 1200 },
+            'Entre 10 e 20 min': { instruction: 'Escreva um sermão de 10-20 minutos.', structure: 'Siga esta estrutura: Desenvolva um único parágrafo muitíssimo breve e objetivo contendo uma introdução, a explicação da ideia central do texto bíblico e uma aplicação.', max_tokens: 750 },
+            'Entre 20 e 30 min': { instruction: 'Escreva um sermão de 20-30 minutos.', structure: 'Siga esta estrutura: 1. Introdução (um parágrafo curto). 2. Contexto do texto bíblico (um parágrafo curto). 3. Exegese do bloco textual (um parágrafo curto). 4. Aplicação Prática (um parágrafo curto). 5. Conclusão (um parágrafo curto).', max_tokens: 1200 },
             'Entre 30 e 40 min': { instruction: 'Escreva um sermão de 30-40 minutos.', structure: 'Siga esta estrutura: 1. Introdução com ilustração. 2. Contexto do livro e da passagem bíblica. 3. Exegese verso a verso. 4. Aplicação para a vida pessoal. 5. Conclusão.', max_tokens: 1900 },
-            'Entre 40 e 50 min': { instruction: 'Escreva um sermão de 40-50 minutos.', structure: 'Siga esta estrutura: 1. Introdução detalhada. 2. Contexto histórico e teológico. 3. Exegese aprofundada do texto bíblico, com significado de palavra-chave no original. 4. Uma Ilustração. 5. Aplicações (pessoal e comunitária). 6. Conclusão com apelo.', max_tokens: 2500 },
+            'Entre 40 e 50 min': { instruction: 'Escreva um sermão de 40-50 minutos.', structure: 'Siga esta estrutura: 1. Introdução detalhada (dois parágrafos curtos). 2. Contexto histórico e teológico (dois parágrafos curtos). 3. Exegese aprofundada do texto bíblico (dois parágrafos curtos). 4. Aplicações, pessoal e comunitária (dois parágrafos curtos). 5. Conclusão com apelo (dois parágrafos curtos).', max_tokens: 2500 },
             'Entre 50 e 60 min': { instruction: 'Escreva um sermão de 50-60 minutos.', structure: 'Siga esta estrutura: 1. Introdução detalhada. 2. Grande Contexto Bíblico-Teológico. 3. Exegese minuciosa com análise de palavras no original e referências cruzadas. 4. Duas Ilustrações. 5. Aplicações multi-pastorais. 6. Conclusão e Oração.', max_tokens: 3500 },
-            'Acima de 1 hora': { instruction: 'Escreva um sermão de mais de 1 hora.', structure: 'Siga esta estrutura: 1. Introdução. 2. Discussão teológica aprofundada. 3. Exegese exaustiva do texto bíblico. 4. Apontamentos para Cristo. 5. Aplicações profundas. 6. Conclusão missional.', max_tokens: 5000 }
+            'Acima de 1 hora': { instruction: 'Escreva um sermão de mais de 1 hora.', structure: 'Siga esta estrutura: 1. Introdução Dramática. 2. Contexto Histórico-Cultural. 3. Discussão teológica. 4. Exegese exaustiva do texto bíblico, com múltiplas análises de palavras no original e curiosidades. 5. Referências Cruzadas. 6. Ilustrações Históricas. 7. Apontamentos para Cristo. 8. Aplicações profundas. 9. Conclusão missional com Apelo e Oração.', max_tokens: 5000 }
         },
         'Textual': {
-            'Entre 1 e 10 min': { instruction: 'Escreva um sermão de 1-10 minutos.', structure: 'Siga esta estrutura: 1. Leitura do Texto Bíblico-Base. 2. Uma linha objetiva com a ideia central. 3. Uma linha objetiva com a Aplicação.', max_tokens: 450 },
-            'Entre 10 e 20 min': { instruction: 'Escreva um sermão de 10-20 minutos.', structure: 'Siga esta estrutura: 1. Uma linha de Introdução. 2. Um parágrafo muitíssimo breve e objetivo sobre o Texto Bíblico. 3. Um parágrafo muitíssimo breve e objetivo com o tema principal. 4. Um parágrafo muitíssimo breve e objetivo de Aplicação. 5. Uma linha de Conclusão.', max_tokens: 750 },
-            'Entre 20 e 30 min': { instruction: 'Escreva um sermão de 20-30 minutos.', structure: 'Siga esta estrutura: 1. Breve Introdução. 2. Breve leitura e divisão do texto bíblico em 2 pontos. 3. Breve explicação de cada ponto. 4. Breve Aplicação geral. 5. Breve Conclusão.', max_tokens: 1200 },
+            'Entre 1 e 10 min': { instruction: 'Escreva um sermão de 1-10 minutos.', structure: 'Siga esta estrutura: 1. Uma linha com a Leitura do Texto Bíblico-Base. 2. Uma linha com a ideia central. 3. Uma linha com a Aplicação.', max_tokens: 450 },
+            'Entre 10 e 20 min': { instruction: 'Escreva um sermão de 10-20 minutos.', structure: 'Siga esta estrutura: Desenvolva um único parágrafo muitíssimo breve e objetivo contendo uma introdução, a explicação do tema principal do texto bíblico e uma conclusão.', max_tokens: 750 },
+            'Entre 20 e 30 min': { instruction: 'Escreva um sermão de 20-30 minutos.', structure: 'Siga esta estrutura: 1. Introdução (um parágrafo curto). 2. Divisão do texto bíblico em 2 pontos, explicando cada um em um parágrafo curto. 3. Aplicação geral (um parágrafo curto). 4. Conclusão (um parágrafo curto).', max_tokens: 1200 },
             'Entre 30 e 40 min': { instruction: 'Escreva um sermão de 30-40 minutos.', structure: 'Siga esta estrutura: 1. Introdução. 2. Divisão do texto bíblico em 3 pontos principais. 3. Desenvolvimento de cada ponto com uma explicação clara. 4. Aplicação para cada ponto. 5. Conclusão.', max_tokens: 1900 },
-            'Entre 40 e 50 min': { instruction: 'Escreva um sermão de 40-50 minutos.', structure: 'Siga esta estrutura: 1. Introdução com ilustração. 2. Contexto da passagem bíblica. 3. Divisão do texto bíblico em 3 pontos. 4. Desenvolvimento de cada ponto com referências e uma breve exegese. 5. Aplicação. 6. Conclusão com apelo.', max_tokens: 2500 },
-            'Entre 50 e 60 min': { instruction: 'Escreva um sermão de 50-60 minutos.', structure: 'Siga esta estrutura: 1. Introdução. 2. Contexto. 3. Divisão do texto bíblico em pontos lógicos. 4. Desenvolvimento aprofundado de cada ponto, com análise de palavras e ilustrações. 5. Aplicações. 6. Conclusão e Oração.', max_tokens: 3500 },
-            'Acima de 1 hora': { instruction: 'Escreva um sermão de mais de 1 hora.', structure: 'Siga esta estrutura: 1. Introdução. 2. Contexto. 3. Divisão do texto bíblico em todos os seus pontos naturais. 4. Desenvolvimento exaustivo de cada ponto, com exegese e referências cruzadas. 5. Múltiplas Aplicações. 6. Conclusão.', max_tokens: 5000 }
+            'Entre 40 e 50 min': { instruction: 'Escreva um sermão de 40-50 minutos.', structure: 'Siga esta estrutura: 1. Introdução com ilustração (dois parágrafos curtos). 2. Contexto da passagem bíblica (dois parágrafos curtos). 3. Divisão do texto bíblico em 3 pontos, com breve exegese (dois parágrafos curtos por ponto). 4. Aplicação (dois parágrafos curtos). 5. Conclusão com apelo (dois parágrafos curtos).', max_tokens: 2500 },
+            'Entre 50 e 60 min': { instruction: 'Escreva um sermão de 50-60 minutos.', structure: 'Siga esta estrutura: 1. Introdução. 2. Contexto. 3. Divisão do texto bíblico em pontos lógicos. 4. Desenvolvimento aprofundado de cada ponto. 5. Análise de palavras-chave. 6. Ilustrações. 7. Conclusão e Oração.', max_tokens: 3500 },
+            'Acima de 1 hora': { instruction: 'Escreva um sermão de mais de 1 hora.', structure: 'Siga esta estrutura: 1. Introdução. 2. Contexto completo. 3. Divisão do texto bíblico em todos os seus pontos naturais. 4. Desenvolvimento exaustivo de cada ponto, com exegese, referências cruzadas e ilustrações. 5. Análise de palavras no original. 6. Múltiplas Aplicações. 7. Curiosidades. 8. Conclusão.', max_tokens: 5000 }
         },
         'Temático': {
-            'Entre 1 e 10 min': { instruction: 'Escreva um sermão de 1-10 minutos.', structure: 'Siga esta estrutura: 1. Apresentação do Tema. 2. Uma linha objetiva de explanação com um versículo bíblico principal. 3. Uma linha objetiva de Aplicação.', max_tokens: 450 },
-            'Entre 10 e 20 min': { instruction: 'Escreva um sermão de 10-20 minutos.', structure: 'Siga esta estrutura: 1. Uma linha de Introdução ao Tema. 2. Um parágrafo muitíssimo breve e objetivo com base em 2 textos bíblicos. 3. Um parágrafo muitíssimo breve e objetivo de Aplicação. 4. Uma linha de Conclusão.', max_tokens: 750 },
-            'Entre 20 e 30 min': { instruction: 'Escreva um sermão de 20-30 minutos.', structure: 'Siga esta estrutura: 1. Breve Introdução. 2. Breve desenvolvimento do tema usando 2 pontos, cada um com um texto bíblico de apoio. 3. Breve Aplicação. 4. Breve Conclusão.', max_tokens: 1200 },
+            'Entre 1 e 10 min': { instruction: 'Escreva um sermão de 1-10 minutos.', structure: 'Siga esta estrutura: 1. Uma linha de Apresentação do Tema. 2. Uma linha de explanação com um versículo bíblico principal. 3. Uma linha de Aplicação.', max_tokens: 450 },
+            'Entre 10 e 20 min': { instruction: 'Escreva um sermão de 10-20 minutos.', structure: 'Siga esta estrutura: Desenvolva um único parágrafo muitíssimo breve e objetivo contendo uma introdução ao tema, um desenvolvimento com base em 2 textos bíblicos e uma aplicação.', max_tokens: 750 },
+            'Entre 20 e 30 min': { instruction: 'Escreva um sermão de 20-30 minutos.', structure: 'Siga esta estrutura: 1. Introdução ao tema (um parágrafo curto). 2. Desenvolvimento do tema usando 2 pontos, cada um com um texto bíblico de apoio (um parágrafo curto por ponto). 3. Aplicação (um parágrafo curto). 4. Conclusão (um parágrafo curto).', max_tokens: 1200 },
             'Entre 30 e 40 min': { instruction: 'Escreva um sermão de 30-40 minutos.', structure: 'Siga esta estrutura: 1. Introdução ao tema. 2. Primeiro Ponto (com um texto bíblico de apoio). 3. Segundo Ponto (com outro texto bíblico de apoio). 4. Aplicação unificada. 5. Conclusão.', max_tokens: 1900 },
-            'Entre 40 e 50 min': { instruction: 'Escreva um sermão de 40-50 minutos.', structure: 'Siga esta estrutura: 1. Introdução com ilustração. 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico e uma breve explicação. 3. Aplicações práticas. 4. Conclusão.', max_tokens: 2500 },
+            'Entre 40 e 50 min': { instruction: 'Escreva um sermão de 40-50 minutos.', structure: 'Siga esta estrutura: 1. Introdução com ilustração (dois parágrafos curtos). 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico e uma breve explicação (dois parágrafos curtos por ponto). 3. Aplicações práticas (dois parágrafos curtos). 4. Conclusão (dois parágrafos curtos).', max_tokens: 2500 },
             'Entre 50 e 60 min': { instruction: 'Escreva um sermão de 50-60 minutos.', structure: 'Siga esta estrutura: 1. Introdução. 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico, breve exegese e uma ilustração. 3. Aplicações para cada ponto. 4. Conclusão com apelo.', max_tokens: 3500 },
             'Acima de 1 hora': { instruction: 'Escreva um sermão de mais de 1 hora.', structure: 'Siga esta estrutura: 1. Introdução. 2. Exploração profunda do tema através de múltiplas passagens bíblicas. 3. Análise teológica e prática. 4. Ilustrações e aplicações robustas. 5. Conclusão e oração.', max_tokens: 5000 }
         }
     };
-
+    
     const fallbackConfig = configs['Expositivo']['Entre 20 e 30 min'];
-    const sermonTypeClean = sermonType.replace(/A\)\s*|B\)\s*|C\)\s*/, '').trim();
-    const config = (configs[sermonTypeClean] && configs[sermonTypeClean][duration]) ? configs[sermonTypeClean][duration] : fallbackConfig;
+    const config = (configs[cleanSermonType] && configs[cleanSermonType][duration]) ? configs[cleanSermonType][duration] : fallbackConfig;
     
     let model;
     let temp;
     
-    const size = duration.includes('1 - 10 min') || duration.includes('10 - 20 min') ? 'small'
-                 : duration.includes('20 - 30 min') || duration.includes('30 - 40 min') ? 'medium'
-                 : 'large';
-
-    if (size === 'small') {
+    if (config.max_tokens <= 1200) {
         model = process.env.OPENAI_MODEL_SMALL || 'gpt-4o-mini';
         temp = parseFloat(process.env.OPENAI_TEMP_SMALL) || 0.7;
-    } else if (size === 'medium') {
+    } else if (config.max_tokens <= 2500) {
         model = process.env.OPENAI_MODEL_MEDIUM || 'gpt-4o-mini';
         temp = parseFloat(process.env.OPENAI_TEMP_MEDIUM) || 0.7;
-    } else { // large
+    } else {
         model = process.env.OPENAI_MODEL_LARGE || 'gpt-4o';
         temp = parseFloat(process.env.OPENAI_TEMP_LARGE) || 0.75;
     }
@@ -405,7 +566,6 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                 step: 4,
             });
         } else if (step === 4) {
-            req.session.sermonData.duration = userResponse;
             const { topic, audience, sermonType, duration } = req.session.sermonData;
             if (!topic || !audience || !sermonType || !duration) {
                 return res.status(400).json({ error: "Faltam informações para gerar o sermão." });
@@ -417,42 +577,53 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
 
             const promptConfig = getPromptConfig(sermonType, duration);
 
-            const prompt = `Gere um sermão do tipo ${sermonType.replace(/A\)\s*|B\)\s*|C\)\s*/, '').trim()} para um público de ${audience.replace(/A-G\)\s*/, '').trim()} sobre o tema "${topic}". ${promptConfig.instruction} ${promptConfig.structure}`;
+            const prompt = `Gere um sermão do tipo ${sermonType.replace(/^[A-Z]\)\s*/, '')} para um público de ${audience.replace(/^[A-Z]\)\s*/, '')} sobre o tema "${topic}". ${promptConfig.instruction} ${promptConfig.structure}`;
             const modelToUse = promptConfig.model;
             const temperature = promptConfig.temperature;
             const maxTokens = promptConfig.max_tokens;
             
             console.log(`[OpenAI] Enviando requisição. Modelo: ${modelToUse}, Temperatura: ${temperature}, Max Tokens: ${maxTokens}`);
-
-            const data = await fetchWithTimeout( "https://api.openai.com/v1/chat/completions", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}`},
-                body: JSON.stringify({
-                    model: modelToUse,
-                    messages: [{ role: "user", content: prompt }],
-                    max_tokens: maxTokens,
-                    temperature: temperature,
-                }),
-            });
             
-            console.log(`[OpenAI] Sermão para [${req.session.user.email}] gerado com sucesso!`);
-            
-            await logSermonActivity({
-                user_email: req.session.user.email,
-                sermon_topic: topic,
-                sermon_audience: audience,
-                sermon_type: sermonType,
-                sermon_duration: duration,
-                model_used: modelToUse,
-                prompt_instruction: promptConfig.structure
-            });
+            try {
+                const data = await fetchWithTimeout( "https://api.openai.com/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}`},
+                    body: JSON.stringify({
+                        model: modelToUse,
+                        messages: [{ role: "user", content: prompt }],
+                        max_tokens: maxTokens,
+                        temperature: temperature,
+                    }),
+                });
 
-            delete req.session.sermonData;
-            res.json({ sermon: data.choices[0].message.content });
+                if (!data || !data.choices || data.choices.length === 0) {
+                    console.error("[Erro ao gerar sermão] A resposta da OpenAI veio vazia ou em formato inesperado.", data);
+                    throw new Error("Resposta inválida da OpenAI.");
+                }
+                
+                console.log(`[OpenAI] Sermão para [${req.session.user.email}] gerado com sucesso!`);
+                
+                await logSermonActivity({
+                    user_email: req.session.user.email,
+                    sermon_topic: topic,
+                    sermon_audience: audience,
+                    sermon_type: sermonType,
+                    sermon_duration: duration,
+                    model_used: modelToUse,
+                    prompt_instruction: promptConfig.structure
+                });
+
+                delete req.session.sermonData;
+                res.json({ sermon: data.choices[0].message.content });
+
+            } catch (error) {
+                console.error("[Erro ao gerar sermão] Falha na chamada da API:", error.message);
+                return res.status(500).json({ error: "Ocorreu um erro ao se comunicar com a IA para gerar o sermão. Por favor, tente novamente." });
+            }
         }
     } catch (error) {
-        console.error("[Erro ao gerar sermão]", error);
-        return res.status(500).json({ error: "Erro ao gerar sermão após várias tentativas." });
+        console.error("[Erro geral no fluxo /api/next-step]", error);
+        return res.status(500).json({ error: `Erro interno no servidor.` });
     }
 });
 
