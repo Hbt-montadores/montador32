@@ -1,4 +1,4 @@
-// server.js - Versão 6.6 (Correção Final da Leitura da API)
+// server.js - Versão Final com todas as melhorias
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -22,7 +22,7 @@ app.set('trust proxy', 1);
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/healthz", (req, res) => res.status(200).send("OK"));
 app.use(express.urlencoded({ extended: true }));
-app.use(express.json()); // <--- LINHA CORRIGIDA
+app.use(express.json());
 
 const loginLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000, max: 15,
@@ -112,7 +112,7 @@ app.post("/login", loginLimiter, async (req, res) => {
             req.session.loginAttempts = (req.session.loginAttempts || 0) + 1;
             
             if (req.session.loginAttempts >= 2) {
-                const notFoundWithPhoneOptionHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Erro de Login</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.input-field{width:calc(100% - 34px);padding:15px;margin-bottom:20px;border:2px solid #0D47A1;border-radius:8px;font-size:1.2em;color:#0D47A1}.action-button{background-color:#1565C0;color:#fff;padding:15px;font-size:1.4em;border:none;border-radius:8px;cursor:pointer;width:100%;display:block}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>E-mail não localizado</h1><p>Não encontramos seu cadastro. Por favor, verifique se digitou o e-mail corretamente ou tente acessar com seu número de celular.</p><form action="/login-by-phone" method="POST"><label for="phone">Celular:</label><input type="tel" id="phone" name="phone" class="input-field" placeholder="Insira aqui o seu celular" required><button type="submit" class="action-button">Entrar com Celular</button></form><a href="/" class="back-link">Tentar com outro e-mail</a></div></body></html>`;
+                const notFoundWithPhoneOptionHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Erro de Login</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.input-field{width:calc(100% - 34px);padding:15px;margin-bottom:20px;border:2px solid #0D47A1;border-radius:8px;font-size:1.2em;color:#0D47A1}.action-button{background-color:#1565C0;color:#fff;padding:15px;font-size:1.4em;border:none;border-radius:8px;cursor:pointer;width:100%;display:block}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>E-mail não localizado</h1><p>Não encontramos seu cadastro. Por favor, verifique se digitou o e-mail corretamente ou tente acessar com seu número de celular.</p><form action="/login-by-phone" method="POST"><label for="phone">Celular:</label><input type="tel" id="phone" name="phone" class="input-field" placeholder="Insira aqui o seu celular" required><button type="submit" class="action-button">Entrar com Celular</button></form><a href="/" class="back-link">Tentar com outro e-mail</a></div><script>function handleInputFocus(event){if(window.innerWidth < 768){setTimeout(()=>{event.target.scrollIntoView({behavior:'smooth',block:'center'})},300)}};const phoneInput = document.getElementById('phone');if(phoneInput){phoneInput.addEventListener('focus',handleInputFocus)}<\/script></body></html>`;
                 return res.status(401).send(notFoundWithPhoneOptionHTML);
             } else {
                 const notFoundErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Erro de Login</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>E-mail não localizado</h1><p>Não encontramos seu cadastro. Por favor, verifique se você digitou o mesmo e-mail que usou no momento da compra.</p><a href="/" class="back-link">Tentar novamente</a></div></body></html>`;
@@ -458,7 +458,7 @@ app.get("/app", requireLogin, (req, res) => {
     res.sendFile(path.join(__dirname, "public", "app.html"));
 });
 
-async function fetchWithTimeout(url, options, timeout = 30000) {
+async function fetchWithTimeout(url, options, timeout = 90000) {
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
             reject(new Error("Timeout: A requisição para a OpenAI demorou muito."));
