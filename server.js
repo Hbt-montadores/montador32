@@ -1,4 +1,4 @@
-// server.js - Versão 6.5 (Correção Final da Lógica de Prompts)
+// server.js - Versão 6.6 (Correção Final da Leitura da API)
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -22,7 +22,7 @@ app.set('trust proxy', 1);
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/healthz", (req, res) => res.status(200).send("OK"));
 app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+app.use(express.json()); // <--- LINHA CORRIGIDA
 
 const loginLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000, max: 15,
@@ -491,7 +491,7 @@ function getPromptConfig(sermonType, duration) {
             'Entre 20 e 30 min': { structure: 'Siga esta estrutura: 1. Introdução (um parágrafo curto). 2. Contexto do texto bíblico (um parágrafo curto). 3. Exegese do bloco textual (um parágrafo curto). 4. Aplicação Prática (um parágrafo curto). 5. Conclusão (um parágrafo curto).', max_tokens: 1200 },
             'Entre 30 e 40 min': { structure: 'Siga esta estrutura: 1. Introdução com ilustração. 2. Contexto do livro e da passagem bíblica. 3. Exegese verso a verso. 4. Aplicação para a vida pessoal. 5. Conclusão.', max_tokens: 1900 },
             'Entre 40 e 50 min': { structure: 'Siga esta estrutura: 1. Introdução detalhada (dois parágrafos curtos). 2. Contexto histórico e teológico (dois parágrafos curtos). 3. Exegese aprofundada do texto bíblico (dois parágrafos curtos). 4. Aplicações, pessoal e comunitária (dois parágrafos curtos). 5. Conclusão com apelo (dois parágrafos curtos).', max_tokens: 2500 },
-            'Entre 50 e 60 min': { structure: 'Siga esta estrutura: 1. Introdução detalhada. 2. Grande Contexto Bíblico-Teológico. 3. Exegese minuciosa com análise de palavras no original e referências cruzadas. 4. Duas Ilustrações. 5. Aplicações multi-pastorais. 6. Conclusão e Oração.', max_tokens: 3500 },
+            'Entre 50 e 60 min': { structure: 'Siga esta estrutura: 1. Introdução detalhada. 2. Grande Contexto Bíblico-Teológico. 3. Exegese minuciosa com análise de palavras no original. 4. Ilustrações. 5. Apontamentos para Cristo. 6. Aplicações multi-pastorais. 7. Conclusão e Oração.', max_tokens: 3500 },
             'Acima de 1 hora': { structure: 'Siga esta estrutura: 1. Introdução Dramática. 2. Contexto Histórico-Cultural. 3. Discussão teológica. 4. Exegese exaustiva do texto bíblico, com múltiplas análises de palavras no original e curiosidades. 5. Referências Cruzadas. 6. Ilustrações Históricas. 7. Apontamentos para Cristo. 8. Aplicações profundas. 9. Conclusão missional com Apelo e Oração.', max_tokens: 5000 }
         },
         'Textual': {
@@ -506,9 +506,9 @@ function getPromptConfig(sermonType, duration) {
         'Temático': {
             'Entre 1 e 10 min': { structure: 'Siga esta estrutura: 1. Uma linha de Apresentação do Tema. 2. Uma linha de explanação com um versículo bíblico principal. 3. Uma linha de Aplicação.', max_tokens: 450 },
             'Entre 10 e 20 min': { structure: 'Siga esta estrutura: Desenvolva um único parágrafo muitíssimo breve e objetivo contendo uma introdução ao tema, um desenvolvimento com base em 2 textos bíblicos e uma aplicação.', max_tokens: 750 },
-            'Entre 20 e 30 min': { instruction: 'Escreva um sermão de 20-30 minutos.', structure: 'Siga esta estrutura: 1. Introdução ao tema (um parágrafo curto). 2. Desenvolvimento do tema usando 2 pontos, cada um com um texto bíblico de apoio (um parágrafo curto por ponto). 3. Aplicação (um parágrafo curto). 4. Conclusão (um parágrafo curto).', max_tokens: 1200 },
-            'Entre 30 e 40 min': { instruction: 'Escreva um sermão de 30-40 minutos.', structure: 'Siga esta estrutura: 1. Introdução ao tema. 2. Primeiro Ponto (com um texto bíblico de apoio). 3. Segundo Ponto (com outro texto bíblico de apoio). 4. Aplicação unificada. 5. Conclusão.', max_tokens: 1900 },
-            'Entre 40 e 50 min': { instruction: 'Escreva um sermão de 40-50 minutos.', structure: 'Siga esta estrutura: 1. Introdução com ilustração (dois parágrafos curtos). 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico e uma breve explicação (dois parágrafos curtos por ponto). 3. Aplicações práticas (dois parágrafos curtos). 4. Conclusão (dois parágrafos curtos).', max_tokens: 2500 },
+            'Entre 20 e 30 min': { structure: 'Siga esta estrutura: 1. Introdução ao tema (um parágrafo curto). 2. Desenvolvimento do tema usando 2 pontos, cada um com um texto bíblico de apoio (um parágrafo curto por ponto). 3. Aplicação (um parágrafo curto). 4. Conclusão (um parágrafo curto).', max_tokens: 1200 },
+            'Entre 30 e 40 min': { structure: 'Siga esta estrutura: 1. Introdução ao tema. 2. Primeiro Ponto (com um texto bíblico de apoio). 3. Segundo Ponto (com outro texto bíblico de apoio). 4. Aplicação unificada. 5. Conclusão.', max_tokens: 1900 },
+            'Entre 40 e 50 min': { structure: 'Siga esta estrutura: 1. Introdução com ilustração (dois parágrafos curtos). 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico e uma breve explicação (dois parágrafos curtos por ponto). 3. Aplicações práticas (dois parágrafos curtos). 4. Conclusão (dois parágrafos curtos).', max_tokens: 2500 },
             'Entre 50 e 60 min': { instruction: 'Escreva um sermão de 50-60 minutos.', structure: 'Siga esta estrutura: 1. Introdução. 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico, breve exegese e uma ilustração. 3. Aplicações para cada ponto. 4. Conclusão com apelo.', max_tokens: 3500 },
             'Acima de 1 hora': { instruction: 'Escreva um sermão de mais de 1 hora.', structure: 'Siga esta estrutura: 1. Introdução. 2. Exploração profunda do tema através de múltiplas passagens bíblicas. 3. Análise teológica e prática. 4. Ilustrações e aplicações robustas. 5. Conclusão e oração.', max_tokens: 5000 }
         }
@@ -562,9 +562,11 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
             }
 
             const promptConfig = getPromptConfig(sermonType, duration);
-            const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '');
-            const cleanAudience = audience.replace(/^[A-Z]\)\s*/, '');
-            const prompt = `Gere um sermão do tipo ${cleanSermonType} para um público de ${cleanAudience} sobre o tema "${topic}". ${promptConfig.structure}`;
+            const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '').trim();
+            const cleanAudience = audience.replace(/^[A-Z]\)\s*/, '').trim();
+            
+            const promptInstruction = promptConfig.instruction || `Escreva um sermão de ${duration}.`;
+            const prompt = `Gere um sermão do tipo ${cleanSermonType} para um público de ${cleanAudience} sobre o tema "${topic}". ${promptInstruction} ${promptConfig.structure}`;
             
             const { model, temperature, max_tokens } = promptConfig;
             
