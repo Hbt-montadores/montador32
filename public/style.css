@@ -8,20 +8,26 @@ body {
     text-align: center;
 }
 
-/* MUDANÇA AQUI: Estilizando o cabeçalho para alinhar os itens */
+/* MUDANÇA: Cabeçalho voltou a ser simples para o logo grande */
 header {
     width: 100%;
-    max-width: 800px; /* Ajuste conforme necessário */
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
     margin-bottom: 20px;
 }
 
 header .logo {
-    height: 60px; /* Reduzido para caber melhor na linha */
-    width: auto;
+    width: 100%;
+    max-height: 150px;
     object-fit: contain;
+}
+
+/* MUDANÇA: Novo contêiner para os botões de ação */
+.header-actions {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px; /* Espaço entre "Atalho" e "Desconectar" */
 }
 
 /* Título principal */
@@ -130,7 +136,7 @@ button:hover {
     height: auto !important;
 }
 
-/* Mensagem de erro (se ainda for usada no frontend) */
+/* Mensagem de erro */
 .error-message {
     color: #D32F2F;
     background-color: #FFCDD2;
@@ -143,16 +149,9 @@ button:hover {
 
 /* --- ESTILOS PARA NOVAS FUNCIONALIDADES --- */
 
-/* MUDANÇA AQUI: Contêiner para os botões do cabeçalho */
-.header-actions {
-    display: flex;
-    align-items: center;
-    gap: 15px; /* Espaço entre os botões */
-}
-
-/* Estilo para o botão de Instalação do App (PWA) */
+/* Estilo para o botão de "Atalho" (PWA) */
 .install-button {
-  background-color: #4CAF50; /* Verde */
+  background-color: #4CAF50;
   color: white;
   border: none;
   border-radius: 8px;
@@ -161,29 +160,28 @@ button:hover {
   font-weight: bold;
   cursor: pointer;
   width: auto;
-  margin: 0; /* Reseta margem para o flexbox controlar */
+  margin: 0;
 }
 
 .install-button:hover {
   background-color: #45a049;
 }
 
-/* MUDANÇA AQUI: Estilo para o link de Sair */
+/* MUDANÇA: Estilo para o link de "Desconectar" (apenas texto) */
 .logout-link {
-    background-color: #f44336; /* Vermelho para indicar ação de sair/perigo */
-    color: white;
-    text-decoration: none;
-    padding: 10px 15px;
-    border-radius: 8px;
+    background-color: transparent;
+    color: #d32f2f; /* Vermelho para o texto */
+    text-decoration: underline;
     font-size: 0.9em;
     font-weight: bold;
-    transition: background-color 0.3s ease;
+    padding: 0;
+    border: none;
+    cursor: pointer;
 }
 
 .logout-link:hover {
-    background-color: #d32f2f;
+    color: #b71c1c; /* Vermelho mais escuro */
 }
-
 
 /* Estilo para o texto de aviso na tela de login */
 .warning-text {
