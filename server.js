@@ -1,4 +1,4 @@
-// server.js - Versão Final 6.1 com Links de Importação e Prompts Refinados
+// server.js - Versão Final 6.2 (Correções Finais)
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -398,6 +398,12 @@ app.get("/admin/view-activity", async (req, res) => {
                     <a href="/admin/view-access-control?key=${key}">Acesso Manual (Vitalícios)</a>
                     <a href="/admin/view-activity?key=${key}"><b>Log de Atividades</b></a>
                 </div>
+                 <hr>
+                <h3>Importação de Clientes (use com cuidado)</h3>
+                <div class="nav-links">
+                    <a href="/admin/import-from-csv?key=${key}&plan_type=anual"><b>[Importar Clientes Anuais via CSV]</b></a>
+                    <a href="/admin/import-from-csv?key=${key}&plan_type=vitalicio"><b>[Importar Clientes Vitalícios via CSV]</b></a>
+                </div>
             </div>
             <h2>Log de Atividades (Últimos ${rows.length} sermões gerados)</h2>
             <table><tr><th>Email</th><th>Tema</th><th>Público</th><th>Tipo</th><th>Duração</th><th>Modelo Usado</th><th>Instrução do Prompt</th><th>Gerado em (Brasília)</th></tr>`;
@@ -570,13 +576,13 @@ function getPromptConfig(sermonType, duration) {
         }
     };
 
-    const config = (configs[sermonType] && configs[sermonType][duration]) ? configs[sermonType][duration] : configs['Expositivo']['Entre 20 e 30 min']; // Fallback seguro
+    const config = (configs[sermonType] && configs[sermonType][duration]) ? configs[sermonType][duration] : configs['Expositivo']['Entre 20 e 30 min'];
     
     let model;
     let temp;
     
-    const size = duration.includes('10 min') || duration.includes('20 min') ? 'small'
-                 : duration.includes('30 min') || duration.includes('40 min') ? 'medium'
+    const size = duration.includes('1 - 10 min') || duration.includes('10 - 20 min') ? 'small'
+                 : duration.includes('20 - 30 min') || duration.includes('30 - 40 min') ? 'medium'
                  : 'large';
 
     if (size === 'small') {
