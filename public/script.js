@@ -13,7 +13,8 @@ document
     const response = await fetch("/api/next-step", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ response: topic, step: 1 }),
+      // CORREÇÃO AQUI: A chave foi renomeada de "response" para "userResponse".
+      body: JSON.stringify({ userResponse: topic, step: 1 }),
     });
 
     const data = await response.json();
@@ -48,7 +49,8 @@ async function nextStep(response, step) {
   const res = await fetch("/api/next-step", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ response, step }),
+    // CORREÇÃO AQUI: A chave foi renomeada de "response" para "userResponse".
+    body: JSON.stringify({ userResponse: response, step }),
   });
 
   const data = await res.json();
