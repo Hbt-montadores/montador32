@@ -3,35 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Montador de Sermões 3.2</title>
+    <title>Montador de Sermões - Login</title>
     <link rel="stylesheet" href="style.css">
+
+    <!-- Bloco de código para o App ser instalável (PWA) -->
+    <link rel="manifest" href="/manifest.json">
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/service-worker.js')
+            .then(registration => {
+              console.log('Service Worker registrado com sucesso.');
+            })
+            .catch(error => {
+              console.log('Falha ao registrar o Service Worker:', error);
+            });
+        });
+      }
+    </script>
+    <!-- Fim do Bloco PWA -->
 </head>
 <body>
     <header>
-        <img src="https://cdn.glitch.global/db74bd9b-d683-421c-9223-f55b917c9dce/logo.png?v=1734385573934" alt="Logo do Montador de Sermões 3.2" class="logo">
+        <img src="https://cdn.glitch.global/db74bd9b-d683-421c-9223-f55b917c9dce/logo.png?v=1734385573934" alt="Logo do Montador de Sermões" class="logo">
     </header>
 
-    <h1>Montador de Sermões 3.2</h1>
+    <h1>Acesse sua Conta</h1>
 
-    <div id="login-container">
-        <form id="login-form" action="/login" method="POST">
-            <label for="email" class="input-label">Digite seu e-mail de compra:</label>
-            <input
-                type="email"
-                id="email"
-                name="email"
-                class="input-field"
-                placeholder="Insira aqui o seu e-mail"
-                autocomplete="email"
-                required
-            >
-            <button type="submit" id="login-button">Entrar</button>
-        </form>
-        <!-- A mensagem de erro agora é tratada pelo backend com uma página HTML completa -->
-        <!-- <div id="error-message" class="error-message" style="display: none;">Senha incorreta. Tente novamente.</div> -->
-    </div>
+    <form id="login-form" method="POST" action="/login">
+        <label for="email" class="input-label">Seu E-mail:</label>
+        <input type="email" id="email" name="email" class="input-field" placeholder="Digite o e-mail da sua assinatura" required>
+        <button type="submit" id="login-button">Entrar</button>
+    </form>
 
-    <!-- A tag de script para 'login.js' foi removida intencionalmente para evitar erros,
-         pois o script antigo procurava por um campo de senha que não existe mais. -->
+    <!-- Script para corrigir o teclado cobrindo o botão no celular -->
+    <script>
+      function handleInputFocus(event) {
+        if (window.innerWidth < 768) { 
+          setTimeout(() => {
+            event.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 300);
+        }
+      }
+      
+      const emailInput = document.getElementById('email');
+      if (emailInput) {
+        emailInput.addEventListener('focus', handleInputFocus);
+      }
+    </script>
+    <!-- Fim do Script de correção -->
 </body>
 </html>
