@@ -8,7 +8,6 @@ body {
     text-align: center;
 }
 
-/* MUDANÇA: Cabeçalho voltou a ser simples para o logo grande */
 header {
     width: 100%;
     margin-bottom: 20px;
@@ -18,16 +17,6 @@ header .logo {
     width: 100%;
     max-height: 150px;
     object-fit: contain;
-}
-
-/* MUDANÇA: Novo contêiner para os botões de ação */
-.header-actions {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    display: flex;
-    align-items: center;
-    gap: 15px; /* Espaço entre "Atalho" e "Desconectar" */
 }
 
 /* Título principal */
@@ -87,6 +76,58 @@ button:hover {
     background-color: #1E88E5;
 }
 
+/* --- ESTILOS PARA NOVAS FUNCIONALIDADES --- */
+
+/* Contêiner para o botão "Atalho" no topo */
+.top-right-actions {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+}
+
+/* Estilo para o botão de "Atalho" (PWA) */
+.install-button {
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 15px;
+  font-size: 0.9em;
+  font-weight: bold;
+  cursor: pointer;
+  width: auto;
+  margin: 0;
+}
+
+.install-button:hover {
+  background-color: #45a049;
+}
+
+/* MUDANÇA: Contêiner para o link "Desconectar" no canto inferior direito */
+.bottom-right-actions {
+    position: fixed; /* Fixo para não rolar com a página */
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000; /* Garante que fique por cima de outros elementos */
+}
+
+/* Estilo para o link de "Desconectar" (apenas texto) */
+.logout-link {
+    background-color: transparent;
+    color: #d32f2f; /* Texto vermelho */
+    text-decoration: underline;
+    font-size: 1em;
+    font-weight: bold;
+    padding: 5px;
+    border: none;
+    cursor: pointer;
+}
+
+.logout-link:hover {
+    color: #b71c1c; /* Vermelho mais escuro */
+}
+
+
 /* Tela de carregamento com spinner */
 .loading-screen {
     font-size: 1.6em;
@@ -145,42 +186,6 @@ button:hover {
     border-radius: 5px;
     margin-top: 15px;
     text-align: center;
-}
-
-/* --- ESTILOS PARA NOVAS FUNCIONALIDADES --- */
-
-/* Estilo para o botão de "Atalho" (PWA) */
-.install-button {
-  background-color: #4CAF50;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 10px 15px;
-  font-size: 0.9em;
-  font-weight: bold;
-  cursor: pointer;
-  width: auto;
-  margin: 0;
-}
-
-.install-button:hover {
-  background-color: #45a049;
-}
-
-/* MUDANÇA: Estilo para o link de "Desconectar" (apenas texto) */
-.logout-link {
-    background-color: transparent;
-    color: #d32f2f; /* Vermelho para o texto */
-    text-decoration: underline;
-    font-size: 0.9em;
-    font-weight: bold;
-    padding: 0;
-    border: none;
-    cursor: pointer;
-}
-
-.logout-link:hover {
-    color: #b71c1c; /* Vermelho mais escuro */
 }
 
 /* Estilo para o texto de aviso na tela de login */
