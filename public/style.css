@@ -1,134 +1,217 @@
-/* Estilos gerais */
+/* style.css - Versão Completa */
+
+/* 1. Variáveis de Cor e Configurações Globais */
+:root {
+  --primary-color: #0D47A1; /* Azul principal */
+  --primary-color-dark: #0a3a82; /* Azul mais escuro para hover */
+  --secondary-color: #4CAF50; /* Verde para o botão de instalar */
+  --secondary-color-dark: #45a049; /* Verde mais escuro para hover */
+  --light-color: #ffffff;
+  --text-color: #333;
+  --background-color: #E3F2FD; /* Fundo azul bem claro */
+  --border-radius: 12px;
+  --box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
 body {
-    font-family: Arial, sans-serif;
-    background-color: #E3F2FD;
-    color: #0D47A1;
-    margin: 0;
-    padding: 20px;
-    text-align: center;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--background-color);
+  color: var(--text-color);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  min-height: 100vh;
 }
 
-/* Logo */
-header .logo {
-    width: 100%;
-    max-height: 150px;
-    object-fit: contain;
-    margin-bottom: 20px;
+/* 2. Cabeçalho */
+header {
+  width: 100%;
+  max-width: 800px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
 }
 
-/* Título principal */
+.logo {
+  height: 60px;
+}
+
+/* 3. Títulos e Textos */
 h1 {
-    color: #0D47A1;
-    font-size: 2.5em;
-    margin-bottom: 30px;
+  color: var(--primary-color);
+  margin-bottom: 25px;
+  text-align: center;
 }
 
-/* Container do formulário */
-#form-container, #options-container, #login-container { /* Adicionado #login-container aqui */
-    background-color: #FFFFFF;
-    padding: 30px;
-    border-radius: 15px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-    max-width: 500px;
-    margin: 0 auto;
-    text-align: left;
-}
-
-/* Rótulo do campo de tema */
 .input-label {
-    font-size: 1.5em;
-    font-weight: bold;
-    margin-bottom: 10px;
-    display: block;
-    color: #0D47A1;
+  font-weight: bold;
+  margin-bottom: 5px;
+  display: block;
 }
 
-/* Campo de entrada */
+.warning-text {
+  display: block;
+  margin-top: -5px;
+  margin-bottom: 10px;
+  font-size: 0.85em;
+  color: #555;
+  text-align: center;
+}
+
+/* 4. Contêineres Principais (Cartões) */
+#form-container, #sermon-result, #error-container {
+  background-color: var(--light-color);
+  padding: 30px;
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow);
+  width: 100%;
+  max-width: 600px;
+  text-align: center;
+}
+
+#options-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  justify-content: center;
+  width: 100%;
+  max-width: 700px;
+}
+
+/* 5. Campos de Formulário */
 .input-field {
-    width: calc(100% - 4px); /* Ajustar largura para alinhar com o fundo branco */
-    padding: 15px;
-    margin-bottom: 20px;
-    border: 2px solid #0D47A1;
-    border-radius: 8px;
-    font-size: 1.2em;
-    color: #0D47A1;
-    box-sizing: border-box; /* Garante que a borda faça parte do tamanho total */
+  width: 100%;
+  padding: 15px;
+  border: 2px solid var(--primary-color);
+  border-radius: var(--border-radius);
+  font-size: 1.1em;
+  margin-bottom: 20px;
 }
 
-/* Botões gerais */
+.input-field:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(13, 71, 161, 0.2);
+}
+
+/* 6. Botões */
 button {
-    background-color: #1565C0;
-    color: #fff;
-    padding: 15px;
-    font-size: 1.4em;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    width: 100%;
-    margin: 10px 0;
-    display: block;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--border-radius);
+  padding: 15px 25px;
+  font-size: 1.1em;
+  font-weight: bold;
+  transition: all 0.2s ease-in-out;
 }
 
-button:hover {
-    background-color: #1E88E5;
+/* Botão principal (azul) */
+#next-step-button, #login-button {
+  background-color: var(--primary-color);
+  color: var(--light-color);
+  width: 100%;
 }
 
-/* Tela de carregamento com spinner */
+#next-step-button:hover, #login-button:hover {
+  background-color: var(--primary-color-dark);
+  transform: translateY(-2px);
+}
+
+/* Botões de opção */
+#options-container button {
+  background-color: var(--light-color);
+  color: var(--primary-color);
+  border: 2px solid var(--primary-color);
+}
+
+#options-container button:hover {
+  background-color: var(--primary-color);
+  color: var(--light-color);
+}
+
+/* Botões secundários (Gerar Novo, Imprimir, Início) */
+#restart-button, #print-button, #home-button {
+  background-color: #f0f0f0;
+  color: #333;
+  margin: 10px;
+}
+
+#restart-button:hover, #print-button:hover, #home-button:hover {
+  background-color: #e0e0e0;
+}
+
+/* Botão de Instalação (verde) */
+.install-button {
+  background-color: var(--secondary-color);
+  color: white;
+  padding: 10px 15px;
+  font-size: 0.9em;
+  margin-left: auto; /* Alinha à direita */
+}
+
+.install-button:hover {
+  background-color: var(--secondary-color-dark);
+}
+
+/* 7. Telas de Estado (Carregando, Erro, Resultado) */
 .loading-screen {
-    font-size: 1.6em;
-    color: #1565C0;
-    margin-top: 50px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
 }
 
 .spinner {
-    border: 8px solid #E3F2FD;
-    border-top: 8px solid #1565C0;
-    border-radius: 50%;
-    width: 60px;
-    height: 60px;
-    animation: spin 1s linear infinite;
-    margin-bottom: 20px;
+  border: 6px solid #f3f3f3;
+  border-top: 6px solid var(--primary-color);
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
-/* Sermão gerado */
 .sermon-content {
-    white-space: normal;
-    line-height: 1.8;
-    font-size: 1.5em;
-    color: #0D47A1;
-    background-color: #FFFFFF;
-    padding: 20px;
-    border-radius: 15px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-    margin: 20px auto;
-    max-width: 800px;
-    text-align: left;
+  text-align: left;
+  line-height: 1.6;
 }
 
-/* Estilos para o campo de senha grande */
-.password-input-large {
-    font-size: 3em !important; /* Tamanho da fonte bem grande */
-    text-align: center; /* Centralizar o texto dentro do campo */
-    padding: 20px 10px !important; /* Mais padding vertical */
-    letter-spacing: 0.1em; /* Espaçamento entre os caracteres para melhor visualização */
-    height: auto !important; /* Ajustar altura automaticamente */
+.error-content p {
+  margin-bottom: 20px;
+  font-size: 1.1em;
 }
 
-/* Mensagem de erro (se ainda for usada no frontend, mas no caso atual, o backend envia uma página) */
-.error-message {
-    color: #D32F2F; /* Cor vermelha para erro */
-    background-color: #FFCDD2; /* Fundo vermelho claro */
-    border: 1px solid #D32F2F;
+/* 8. Responsividade (Design para Celular) */
+@media (max-width: 600px) {
+  body {
     padding: 10px;
-    border-radius: 5px;
-    margin-top: 15px;
-    text-align: center;
+  }
+  h1 {
+    font-size: 1.8em;
+  }
+  #form-container, #sermon-result, #error-container {
+    padding: 20px;
+  }
+  button {
+    width: 100%;
+  }
+  #restart-button, #print-button, #home-button {
+    width: auto; /* Permite que botões secundários não ocupem a tela toda */
+  }
+  .install-button {
+    font-size: 0.8em;
+    padding: 8px 10px;
+  }
 }
