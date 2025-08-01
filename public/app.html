@@ -3,17 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- MUDANÇA: Título atualizado para 3.2 -->
     <title>Montador de Sermões 3.2</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <header>
-        <!-- MUDANÇA: Texto alternativo do logo atualizado para 3.2 -->
         <img src="https://cdn.glitch.global/db74bd9b-d683-421c-9223-f55b917c9dce/logo.png?v=1734385573934" alt="Logo do Montador de Sermões 3.2" class="logo">
     </header>
 
-    <!-- MUDANÇA: Título principal atualizado para 3.2 -->
     <h1>Montador de Sermões 3.2</h1>
 
     <div id="form-container">
@@ -26,12 +23,17 @@
 
     <div id="loading-screen" class="loading-screen" style="display: none;">
         <div class="spinner"></div>
-        <p>Gerando sermão, por favor aguarde...</p>
+        <p id="loading-text">Gerando sermão, por favor aguarde...</p>
     </div>
 
     <div id="sermon-result" class="sermon-content" style="display: none;"></div>
     <button id="restart-button" class="restart-button" style="display: none;">Gerar Novo Sermão</button>
     <button id="print-button" class="print-button" style="display: none;">Imprimir Sermão</button>
+
+    <div id="error-container" class="error-content" style="display: none;">
+        <p>Não foi possível gerar o sermão no momento. Por favor, tente novamente mais tarde.</p>
+        <button id="home-button">Início</button>
+    </div>
 
     <script src="script.js"></script>
 </body>
