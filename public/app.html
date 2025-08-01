@@ -5,6 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Montador de Sermões 3.2</title>
     <link rel="stylesheet" href="style.css">
+
+    <!-- MUDANÇA: Adicione este bloco de código aqui -->
+    <link rel="manifest" href="/manifest.json">
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/service-worker.js')
+            .then(registration => {
+              console.log('Service Worker registrado com sucesso.');
+            })
+            .catch(error => {
+              console.log('Falha ao registrar o Service Worker:', error);
+            });
+        });
+      }
+    </script>
+    <!-- Fim do Bloco de Código PWA -->
+
 </head>
 <body>
     <header>
