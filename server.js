@@ -1,4 +1,4 @@
-// server.js - Versão Final com todas as melhorias
+// server.js - Versão Final com Login Automático e Revalidação de Status
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -48,10 +48,57 @@ function requireLogin(req, res, next) {
   else { return res.redirect('/'); }
 }
 
+// NOVO: Middleware para revalidar o status do usuário em cada visita
+async function revalidateAndCheckStatus(req, res, next) {
+    // Se não houver usuário na sessão, apenas continue (requireLogin já tratou isso)
+    if (!req.session.user) {
+        return next();
+    }
+    
+    try {
+        const customer = await getCustomerRecordByEmail(req.session.user.email);
+        
+        // Se o cliente não for encontrado no DB (talvez deletado), destrua a sessão
+        if (!customer) {
+            return req.session.destroy(() => {
+                res.redirect('/');
+            });
+        }
+        
+        // Verifica status de pagamento via Eduzz
+        if (customer.status !== 'paid' && !customer.expires_at) { // Não bloqueia clientes anuais/vitalícios ainda válidos
+            const overdueErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pagamento Pendente</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu, clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
+            return res.status(401).send(overdueErrorMessageHTML);
+        }
+
+        // Verifica data de expiração para clientes importados/manuais
+        if (customer.expires_at && new Date() > new Date(customer.expires_at)) {
+            const expiredErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Acesso Expirado</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu, clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
+            return res.status(401).send(expiredErrorMessageHTML);
+        }
+        
+        // Se tudo estiver OK, prossiga para a próxima rota.
+        next();
+    } catch (error) {
+        console.error("Erro na revalidação de status:", error);
+        return res.status(500).send("<h1>Erro Interno</h1><p>Ocorreu um problema ao verificar seu status. Tente novamente mais tarde.</p>");
+    }
+}
+
+
 // --- 3. ROTAS PÚBLICAS E DE ADMINISTRAÇÃO ---
 const ALLOW_ANYONE = process.env.ALLOW_ANYONE === "true";
 
-app.get("/", (req, res) => { res.sendFile(path.join(__dirname, "public", "login.html")); });
+// ALTERADO: Lógica de login automático na rota raiz
+app.get("/", (req, res) => { 
+    if (req.session && req.session.user) {
+        // Se o usuário já tem uma sessão, redireciona direto para o app.
+        // A própria rota do app fará a revalidação de status.
+        return res.redirect('/app');
+    }
+    // Se não, mostra a página de login.
+    res.sendFile(path.join(__dirname, "public", "login.html")); 
+});
 
 app.get('/logout', (req, res) => {
   req.session.destroy(err => {
@@ -112,6 +159,7 @@ app.post("/login", loginLimiter, async (req, res) => {
             req.session.loginAttempts = (req.session.loginAttempts || 0) + 1;
             
             if (req.session.loginAttempts >= 2) {
+                // ALTERADO: Adição do script de correção do teclado para o celular
                 const notFoundWithPhoneOptionHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Erro de Login</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.input-field{width:calc(100% - 34px);padding:15px;margin-bottom:20px;border:2px solid #0D47A1;border-radius:8px;font-size:1.2em;color:#0D47A1}.action-button{background-color:#1565C0;color:#fff;padding:15px;font-size:1.4em;border:none;border-radius:8px;cursor:pointer;width:100%;display:block}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>E-mail não localizado</h1><p>Não encontramos seu cadastro. Por favor, verifique se digitou o e-mail corretamente ou tente acessar com seu número de celular.</p><form action="/login-by-phone" method="POST"><label for="phone">Celular:</label><input type="tel" id="phone" name="phone" class="input-field" placeholder="Insira aqui o seu celular" required><button type="submit" class="action-button">Entrar com Celular</button></form><a href="/" class="back-link">Tentar com outro e-mail</a></div><script>function handleInputFocus(event){if(window.innerWidth < 768){setTimeout(()=>{event.target.scrollIntoView({behavior:'smooth',block:'center'})},300)}};const phoneInput = document.getElementById('phone');if(phoneInput){phoneInput.addEventListener('focus',handleInputFocus)}<\/script></body></html>`;
                 return res.status(401).send(notFoundWithPhoneOptionHTML);
             } else {
@@ -454,7 +502,8 @@ app.get("/admin/import-from-csv", async (req, res) => {
 });
 
 // --- 4. ROTAS PROTEGIDAS (Apenas para usuários logados) ---
-app.get("/app", requireLogin, (req, res) => {
+// ALTERADO: Middleware de revalidação de status adicionado à rota /app
+app.get("/app", requireLogin, revalidateAndCheckStatus, (req, res) => {
     res.sendFile(path.join(__dirname, "public", "app.html"));
 });
 
