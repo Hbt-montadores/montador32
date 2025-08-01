@@ -23,7 +23,9 @@ if (installButton) {
 }
 // --- FIM DA LÓGICA DE INSTALAÇÃO ---
 
-const headerActions = document.getElementById('header-actions');
+// MUDANÇA: Referências aos novos contêineres de botões
+const topActions = document.getElementById('top-right-actions');
+const bottomActions = document.getElementById('bottom-right-actions');
 
 document
   .getElementById("next-step-button")
@@ -85,9 +87,10 @@ async function nextStep(response, step) {
   document.getElementById("options-container").style.display = "none";
   loadingScreen.style.display = "flex";
 
-  // MUDANÇA: Esconder os botões do cabeçalho quando o sermão está sendo gerado
+  // Esconder os botões do cabeçalho quando o sermão está sendo gerado
   if (step === 4) {
-      headerActions.style.display = 'none';
+      if(topActions) topActions.style.display = 'none';
+      if(bottomActions) bottomActions.style.display = 'none';
   }
 
   const longSermonTriggers = ["Entre 40 e 50 min", "Entre 50 e 60 min", "Acima de 1 hora"];
@@ -142,8 +145,9 @@ function showSermon(content) {
   document.getElementById("restart-button").style.display = "block";
   document.getElementById("print-button").style.display = "block";
   
-  // MUDANÇA: Garante que os botões do cabeçalho fiquem escondidos na tela do sermão
-  headerActions.style.display = 'none';
+  // Garante que os botões do cabeçalho fiquem escondidos na tela do sermão
+  if(topActions) topActions.style.display = 'none';
+  if(bottomActions) bottomActions.style.display = 'none';
 }
 
 function showErrorScreen() {
@@ -154,8 +158,9 @@ function showErrorScreen() {
     document.getElementById("restart-button").style.display = "none";
     document.getElementById("print-button").style.display = "none";
     
-    // MUDANÇA: Mostra os botões do cabeçalho na tela de erro para o usuário poder sair
-    headerActions.style.display = 'flex';
+    // Mostra os botões do cabeçalho na tela de erro para o usuário poder sair
+    if(topActions) topActions.style.display = 'flex';
+    if(bottomActions) bottomActions.style.display = 'block';
     document.getElementById("error-container").style.display = "block";
 }
 
@@ -168,6 +173,7 @@ function resetApp() {
     document.getElementById("topic").value = "";
     document.getElementById("form-container").style.display = "block";
     
-    // MUDANÇA: Mostra os botões do cabeçalho novamente ao resetar
-    headerActions.style.display = 'flex';
-}```
+    // Mostra os botões do cabeçalho novamente ao resetar
+    if(topActions) topActions.style.display = 'flex';
+    if(bottomActions) bottomActions.style.display = 'block';
+}
