@@ -1,4 +1,4 @@
-// server.js - Versão Final e Definitiva (com Matriz de Prompts v4)
+// server.js - Versão 6.5 (Correção Final da Lógica de Prompts)
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -482,29 +482,30 @@ async function fetchWithTimeout(url, options, timeout = 30000) {
 }
 
 function getPromptConfig(sermonType, duration) {
-    const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '');
+    const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '').trim();
+
     const configs = {
         'Expositivo': {
-            'Entre 1 e 10 min': { instruction: 'Escreva um sermão de 1-10 minutos.', structure: 'Siga esta estrutura: 1. Uma linha objetiva com o Tema. 2. Uma linha objetiva com o contexto do texto bíblico. 3. Uma linha objetiva com a Aplicação Prática.', max_tokens: 450 },
-            'Entre 10 e 20 min': { instruction: 'Escreva um sermão de 10-20 minutos.', structure: 'Siga esta estrutura: Desenvolva um único parágrafo muitíssimo breve e objetivo contendo uma introdução, a explicação da ideia central do texto bíblico e uma aplicação.', max_tokens: 750 },
-            'Entre 20 e 30 min': { instruction: 'Escreva um sermão de 20-30 minutos.', structure: 'Siga esta estrutura: 1. Introdução (um parágrafo curto). 2. Contexto do texto bíblico (um parágrafo curto). 3. Exegese do bloco textual (um parágrafo curto). 4. Aplicação Prática (um parágrafo curto). 5. Conclusão (um parágrafo curto).', max_tokens: 1200 },
-            'Entre 30 e 40 min': { instruction: 'Escreva um sermão de 30-40 minutos.', structure: 'Siga esta estrutura: 1. Introdução com ilustração. 2. Contexto do livro e da passagem bíblica. 3. Exegese verso a verso. 4. Aplicação para a vida pessoal. 5. Conclusão.', max_tokens: 1900 },
-            'Entre 40 e 50 min': { instruction: 'Escreva um sermão de 40-50 minutos.', structure: 'Siga esta estrutura: 1. Introdução detalhada (dois parágrafos curtos). 2. Contexto histórico e teológico (dois parágrafos curtos). 3. Exegese aprofundada do texto bíblico (dois parágrafos curtos). 4. Aplicações, pessoal e comunitária (dois parágrafos curtos). 5. Conclusão com apelo (dois parágrafos curtos).', max_tokens: 2500 },
-            'Entre 50 e 60 min': { instruction: 'Escreva um sermão de 50-60 minutos.', structure: 'Siga esta estrutura: 1. Introdução detalhada. 2. Grande Contexto Bíblico-Teológico. 3. Exegese minuciosa com análise de palavras no original e referências cruzadas. 4. Duas Ilustrações. 5. Aplicações multi-pastorais. 6. Conclusão e Oração.', max_tokens: 3500 },
-            'Acima de 1 hora': { instruction: 'Escreva um sermão de mais de 1 hora.', structure: 'Siga esta estrutura: 1. Introdução Dramática. 2. Contexto Histórico-Cultural. 3. Discussão teológica. 4. Exegese exaustiva do texto bíblico, com múltiplas análises de palavras no original e curiosidades. 5. Referências Cruzadas. 6. Ilustrações Históricas. 7. Apontamentos para Cristo. 8. Aplicações profundas. 9. Conclusão missional com Apelo e Oração.', max_tokens: 5000 }
+            'Entre 1 e 10 min': { structure: 'Siga esta estrutura: 1. Uma linha objetiva com o Tema. 2. Uma linha objetiva com o contexto do texto bíblico. 3. Uma linha objetiva com a Aplicação Prática.', max_tokens: 450 },
+            'Entre 10 e 20 min': { structure: 'Siga esta estrutura: Desenvolva um único parágrafo muitíssimo breve e objetivo contendo uma introdução, a explicação da ideia central do texto bíblico e uma aplicação.', max_tokens: 750 },
+            'Entre 20 e 30 min': { structure: 'Siga esta estrutura: 1. Introdução (um parágrafo curto). 2. Contexto do texto bíblico (um parágrafo curto). 3. Exegese do bloco textual (um parágrafo curto). 4. Aplicação Prática (um parágrafo curto). 5. Conclusão (um parágrafo curto).', max_tokens: 1200 },
+            'Entre 30 e 40 min': { structure: 'Siga esta estrutura: 1. Introdução com ilustração. 2. Contexto do livro e da passagem bíblica. 3. Exegese verso a verso. 4. Aplicação para a vida pessoal. 5. Conclusão.', max_tokens: 1900 },
+            'Entre 40 e 50 min': { structure: 'Siga esta estrutura: 1. Introdução detalhada (dois parágrafos curtos). 2. Contexto histórico e teológico (dois parágrafos curtos). 3. Exegese aprofundada do texto bíblico (dois parágrafos curtos). 4. Aplicações, pessoal e comunitária (dois parágrafos curtos). 5. Conclusão com apelo (dois parágrafos curtos).', max_tokens: 2500 },
+            'Entre 50 e 60 min': { structure: 'Siga esta estrutura: 1. Introdução detalhada. 2. Grande Contexto Bíblico-Teológico. 3. Exegese minuciosa com análise de palavras no original e referências cruzadas. 4. Duas Ilustrações. 5. Aplicações multi-pastorais. 6. Conclusão e Oração.', max_tokens: 3500 },
+            'Acima de 1 hora': { structure: 'Siga esta estrutura: 1. Introdução Dramática. 2. Contexto Histórico-Cultural. 3. Discussão teológica. 4. Exegese exaustiva do texto bíblico, com múltiplas análises de palavras no original e curiosidades. 5. Referências Cruzadas. 6. Ilustrações Históricas. 7. Apontamentos para Cristo. 8. Aplicações profundas. 9. Conclusão missional com Apelo e Oração.', max_tokens: 5000 }
         },
         'Textual': {
-            'Entre 1 e 10 min': { instruction: 'Escreva um sermão de 1-10 minutos.', structure: 'Siga esta estrutura: 1. Uma linha com a Leitura do Texto Bíblico-Base. 2. Uma linha com a ideia central. 3. Uma linha com a Aplicação.', max_tokens: 450 },
-            'Entre 10 e 20 min': { instruction: 'Escreva um sermão de 10-20 minutos.', structure: 'Siga esta estrutura: Desenvolva um único parágrafo muitíssimo breve e objetivo contendo uma introdução, a explicação do tema principal do texto bíblico e uma conclusão.', max_tokens: 750 },
-            'Entre 20 e 30 min': { instruction: 'Escreva um sermão de 20-30 minutos.', structure: 'Siga esta estrutura: 1. Introdução (um parágrafo curto). 2. Divisão do texto bíblico em 2 pontos, explicando cada um em um parágrafo curto. 3. Aplicação geral (um parágrafo curto). 4. Conclusão (um parágrafo curto).', max_tokens: 1200 },
-            'Entre 30 e 40 min': { instruction: 'Escreva um sermão de 30-40 minutos.', structure: 'Siga esta estrutura: 1. Introdução. 2. Divisão do texto bíblico em 3 pontos principais. 3. Desenvolvimento de cada ponto com uma explicação clara. 4. Aplicação para cada ponto. 5. Conclusão.', max_tokens: 1900 },
-            'Entre 40 e 50 min': { instruction: 'Escreva um sermão de 40-50 minutos.', structure: 'Siga esta estrutura: 1. Introdução com ilustração (dois parágrafos curtos). 2. Contexto da passagem bíblica (dois parágrafos curtos). 3. Divisão do texto bíblico em 3 pontos, com breve exegese (dois parágrafos curtos por ponto). 4. Aplicação (dois parágrafos curtos). 5. Conclusão com apelo (dois parágrafos curtos).', max_tokens: 2500 },
-            'Entre 50 e 60 min': { instruction: 'Escreva um sermão de 50-60 minutos.', structure: 'Siga esta estrutura: 1. Introdução. 2. Contexto. 3. Divisão do texto bíblico em pontos lógicos. 4. Desenvolvimento aprofundado de cada ponto. 5. Análise de palavras-chave. 6. Ilustrações. 7. Conclusão e Oração.', max_tokens: 3500 },
-            'Acima de 1 hora': { instruction: 'Escreva um sermão de mais de 1 hora.', structure: 'Siga esta estrutura: 1. Introdução. 2. Contexto completo. 3. Divisão do texto bíblico em todos os seus pontos naturais. 4. Desenvolvimento exaustivo de cada ponto, com exegese, referências cruzadas e ilustrações. 5. Análise de palavras no original. 6. Múltiplas Aplicações. 7. Curiosidades. 8. Conclusão.', max_tokens: 5000 }
+            'Entre 1 e 10 min': { structure: 'Siga esta estrutura: 1. Uma linha com a Leitura do Texto Bíblico-Base. 2. Uma linha com a ideia central. 3. Uma linha com a Aplicação.', max_tokens: 450 },
+            'Entre 10 e 20 min': { structure: 'Siga esta estrutura: Desenvolva um único parágrafo muitíssimo breve e objetivo contendo uma introdução, a explicação do tema principal do texto bíblico e uma conclusão.', max_tokens: 750 },
+            'Entre 20 e 30 min': { structure: 'Siga esta estrutura: 1. Introdução (um parágrafo curto). 2. Divisão do texto bíblico em 2 pontos, explicando cada um em um parágrafo curto. 3. Aplicação geral (um parágrafo curto). 4. Conclusão (um parágrafo curto).', max_tokens: 1200 },
+            'Entre 30 e 40 min': { structure: 'Siga esta estrutura: 1. Introdução. 2. Divisão do texto bíblico em 3 pontos principais. 3. Desenvolvimento de cada ponto com uma explicação clara. 4. Aplicação para cada ponto. 5. Conclusão.', max_tokens: 1900 },
+            'Entre 40 e 50 min': { structure: 'Siga esta estrutura: 1. Introdução com ilustração (dois parágrafos curtos). 2. Contexto da passagem bíblica (dois parágrafos curtos). 3. Divisão do texto bíblico em 3 pontos, com breve exegese (dois parágrafos curtos por ponto). 4. Aplicação (dois parágrafos curtos). 5. Conclusão com apelo (dois parágrafos curtos).', max_tokens: 2500 },
+            'Entre 50 e 60 min': { structure: 'Siga esta estrutura: 1. Introdução. 2. Contexto. 3. Divisão do texto bíblico em pontos lógicos. 4. Desenvolvimento aprofundado de cada ponto. 5. Análise de palavras-chave. 6. Ilustrações. 7. Conclusão e Oração.', max_tokens: 3500 },
+            'Acima de 1 hora': { structure: 'Siga esta estrutura: 1. Introdução. 2. Contexto completo. 3. Divisão do texto bíblico em todos os seus pontos naturais. 4. Desenvolvimento exaustivo de cada ponto, com exegese e referências cruzadas. 5. Análise de palavras no original. 6. Múltiplas Aplicações. 7. Curiosidades. 8. Conclusão.', max_tokens: 5000 }
         },
         'Temático': {
-            'Entre 1 e 10 min': { instruction: 'Escreva um sermão de 1-10 minutos.', structure: 'Siga esta estrutura: 1. Uma linha de Apresentação do Tema. 2. Uma linha de explanação com um versículo bíblico principal. 3. Uma linha de Aplicação.', max_tokens: 450 },
-            'Entre 10 e 20 min': { instruction: 'Escreva um sermão de 10-20 minutos.', structure: 'Siga esta estrutura: Desenvolva um único parágrafo muitíssimo breve e objetivo contendo uma introdução ao tema, um desenvolvimento com base em 2 textos bíblicos e uma aplicação.', max_tokens: 750 },
+            'Entre 1 e 10 min': { structure: 'Siga esta estrutura: 1. Uma linha de Apresentação do Tema. 2. Uma linha de explanação com um versículo bíblico principal. 3. Uma linha de Aplicação.', max_tokens: 450 },
+            'Entre 10 e 20 min': { structure: 'Siga esta estrutura: Desenvolva um único parágrafo muitíssimo breve e objetivo contendo uma introdução ao tema, um desenvolvimento com base em 2 textos bíblicos e uma aplicação.', max_tokens: 750 },
             'Entre 20 e 30 min': { instruction: 'Escreva um sermão de 20-30 minutos.', structure: 'Siga esta estrutura: 1. Introdução ao tema (um parágrafo curto). 2. Desenvolvimento do tema usando 2 pontos, cada um com um texto bíblico de apoio (um parágrafo curto por ponto). 3. Aplicação (um parágrafo curto). 4. Conclusão (um parágrafo curto).', max_tokens: 1200 },
             'Entre 30 e 40 min': { instruction: 'Escreva um sermão de 30-40 minutos.', structure: 'Siga esta estrutura: 1. Introdução ao tema. 2. Primeiro Ponto (com um texto bíblico de apoio). 3. Segundo Ponto (com outro texto bíblico de apoio). 4. Aplicação unificada. 5. Conclusão.', max_tokens: 1900 },
             'Entre 40 e 50 min': { instruction: 'Escreva um sermão de 40-50 minutos.', structure: 'Siga esta estrutura: 1. Introdução com ilustração (dois parágrafos curtos). 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico e uma breve explicação (dois parágrafos curtos por ponto). 3. Aplicações práticas (dois parágrafos curtos). 4. Conclusão (dois parágrafos curtos).', max_tokens: 2500 },
@@ -514,24 +515,15 @@ function getPromptConfig(sermonType, duration) {
     };
     
     const fallbackConfig = configs['Expositivo']['Entre 20 e 30 min'];
-    const config = (configs[cleanSermonType] && configs[cleanSermonType][duration]) ? configs[cleanSermonType][duration] : fallbackConfig;
-    
-    let model;
-    let temp;
-    
-    if (config.max_tokens <= 1200) {
-        model = process.env.OPENAI_MODEL_SMALL || 'gpt-4o-mini';
-        temp = parseFloat(process.env.OPENAI_TEMP_SMALL) || 0.7;
-    } else if (config.max_tokens <= 2500) {
-        model = process.env.OPENAI_MODEL_MEDIUM || 'gpt-4o-mini';
-        temp = parseFloat(process.env.OPENAI_TEMP_MEDIUM) || 0.7;
-    } else {
-        model = process.env.OPENAI_MODEL_LARGE || 'gpt-4o';
-        temp = parseFloat(process.env.OPENAI_TEMP_LARGE) || 0.75;
+    let config = fallbackConfig;
+    if (configs[cleanSermonType] && configs[cleanSermonType][duration]) {
+        config = configs[cleanSermonType][duration];
     }
+    
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const temp = parseFloat(process.env.OPENAI_TEMPERATURE) || 0.7;
 
     return {
-        instruction: config.instruction,
         structure: config.structure,
         max_tokens: config.max_tokens,
         model: model,
@@ -540,33 +532,27 @@ function getPromptConfig(sermonType, duration) {
 }
 
 app.post("/api/next-step", requireLogin, async (req, res) => {
-    const userResponse = req.body.response;
+    const { userResponse } = req.body;
     const step = req.body.step || 1;
-    console.log( `Usuário [${req.session.user.email}] - Processando etapa ${step}, resposta: ${userResponse}`);
+    console.log(`Usuário [${req.session.user.email}] - Processando etapa ${step}, resposta: ${userResponse}`);
+
     try {
         if (step === 1) {
             req.session.sermonData = { topic: userResponse };
-            return res.json({
-                question: "Que tipo de público você vai pregar?",
-                options: ["A) Crianças","B) Adolescentes","C) Jovens","D) Mulheres","E) Homens","F) Público misto","G) Não convertido"],
-                step: 2,
-            });
-        } else if (step === 2) {
+            return res.json({ question: "Que tipo de público você vai pregar?", options: ["A) Crianças", "B) Adolescentes", "C) Jovens", "D) Mulheres", "E) Homens", "F) Público misto", "G) Não convertido"], step: 2 });
+        }
+        if (step === 2) {
             req.session.sermonData.audience = userResponse;
-            return res.json({
-                question: "Que tipo de sermão você vai pregar?",
-                options: ["A) Expositivo", "B) Textual", "C) Temático"],
-                step: 3,
-            });
-        } else if (step === 3) {
+            return res.json({ question: "Que tipo de sermão você vai pregar?", options: ["A) Expositivo", "B) Textual", "C) Temático"], step: 3 });
+        }
+        if (step === 3) {
             req.session.sermonData.sermonType = userResponse;
-            return res.json({
-                question: "Quantos minutos deve durar o sermão?",
-                options: ["Entre 1 e 10 min","Entre 10 e 20 min","Entre 20 e 30 min","Entre 30 e 40 min","Entre 40 e 50 min","Entre 50 e 60 min","Acima de 1 hora"],
-                step: 4,
-            });
-        } else if (step === 4) {
+            return res.json({ question: "Quantos minutos deve durar o sermão?", options: ["Entre 1 e 10 min", "Entre 10 e 20 min", "Entre 20 e 30 min", "Entre 30 e 40 min", "Entre 40 e 50 min", "Entre 50 e 60 min", "Acima de 1 hora"], step: 4 });
+        }
+        if (step === 4) {
+            req.session.sermonData.duration = userResponse;
             const { topic, audience, sermonType, duration } = req.session.sermonData;
+
             if (!topic || !audience || !sermonType || !duration) {
                 return res.status(400).json({ error: "Faltam informações para gerar o sermão." });
             }
@@ -576,28 +562,27 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
             }
 
             const promptConfig = getPromptConfig(sermonType, duration);
-
-            const prompt = `Gere um sermão do tipo ${sermonType.replace(/^[A-Z]\)\s*/, '')} para um público de ${audience.replace(/^[A-Z]\)\s*/, '')} sobre o tema "${topic}". ${promptConfig.instruction} ${promptConfig.structure}`;
-            const modelToUse = promptConfig.model;
-            const temperature = promptConfig.temperature;
-            const maxTokens = promptConfig.max_tokens;
+            const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '');
+            const cleanAudience = audience.replace(/^[A-Z]\)\s*/, '');
+            const prompt = `Gere um sermão do tipo ${cleanSermonType} para um público de ${cleanAudience} sobre o tema "${topic}". ${promptConfig.structure}`;
             
-            console.log(`[OpenAI] Enviando requisição. Modelo: ${modelToUse}, Temperatura: ${temperature}, Max Tokens: ${maxTokens}`);
+            const { model, temperature, max_tokens } = promptConfig;
+            
+            console.log(`[OpenAI] Enviando requisição. Modelo: ${model}, Temperatura: ${temperature}, Max Tokens: ${max_tokens}`);
             
             try {
-                const data = await fetchWithTimeout( "https://api.openai.com/v1/chat/completions", {
+                const data = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}`},
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
                     body: JSON.stringify({
-                        model: modelToUse,
+                        model: model,
                         messages: [{ role: "user", content: prompt }],
-                        max_tokens: maxTokens,
+                        max_tokens: max_tokens,
                         temperature: temperature,
                     }),
                 });
 
                 if (!data || !data.choices || data.choices.length === 0) {
-                    console.error("[Erro ao gerar sermão] A resposta da OpenAI veio vazia ou em formato inesperado.", data);
                     throw new Error("Resposta inválida da OpenAI.");
                 }
                 
@@ -609,7 +594,7 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                     sermon_audience: audience,
                     sermon_type: sermonType,
                     sermon_duration: duration,
-                    model_used: modelToUse,
+                    model_used: model,
                     prompt_instruction: promptConfig.structure
                 });
 
@@ -617,7 +602,7 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                 res.json({ sermon: data.choices[0].message.content });
 
             } catch (error) {
-                console.error("[Erro ao gerar sermão] Falha na chamada da API:", error.message);
+                console.error("[Erro ao gerar sermão] Falha na chamada da API:", error);
                 return res.status(500).json({ error: "Ocorreu um erro ao se comunicar com a IA para gerar o sermão. Por favor, tente novamente." });
             }
         }
