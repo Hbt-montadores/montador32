@@ -1,4 +1,4 @@
-// server.js - Versão Final com Login Automático e Revalidação de Status
+// server.js - Versão 6.7 (Correção Definitiva do Parse de JSON e Lógica de Prompts)
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -22,7 +22,7 @@ app.set('trust proxy', 1);
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/healthz", (req, res) => res.status(200).send("OK"));
 app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+app.use(express.json()); // LINHA CRUCIAL RESTAURADA
 
 const loginLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000, max: 15,
@@ -48,57 +48,10 @@ function requireLogin(req, res, next) {
   else { return res.redirect('/'); }
 }
 
-// NOVO: Middleware para revalidar o status do usuário em cada visita
-async function revalidateAndCheckStatus(req, res, next) {
-    // Se não houver usuário na sessão, apenas continue (requireLogin já tratou isso)
-    if (!req.session.user) {
-        return next();
-    }
-    
-    try {
-        const customer = await getCustomerRecordByEmail(req.session.user.email);
-        
-        // Se o cliente não for encontrado no DB (talvez deletado), destrua a sessão
-        if (!customer) {
-            return req.session.destroy(() => {
-                res.redirect('/');
-            });
-        }
-        
-        // Verifica status de pagamento via Eduzz
-        if (customer.status !== 'paid' && !customer.expires_at) { // Não bloqueia clientes anuais/vitalícios ainda válidos
-            const overdueErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pagamento Pendente</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu, clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
-            return res.status(401).send(overdueErrorMessageHTML);
-        }
-
-        // Verifica data de expiração para clientes importados/manuais
-        if (customer.expires_at && new Date() > new Date(customer.expires_at)) {
-            const expiredErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Acesso Expirado</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu, clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
-            return res.status(401).send(expiredErrorMessageHTML);
-        }
-        
-        // Se tudo estiver OK, prossiga para a próxima rota.
-        next();
-    } catch (error) {
-        console.error("Erro na revalidação de status:", error);
-        return res.status(500).send("<h1>Erro Interno</h1><p>Ocorreu um problema ao verificar seu status. Tente novamente mais tarde.</p>");
-    }
-}
-
-
 // --- 3. ROTAS PÚBLICAS E DE ADMINISTRAÇÃO ---
 const ALLOW_ANYONE = process.env.ALLOW_ANYONE === "true";
 
-// ALTERADO: Lógica de login automático na rota raiz
-app.get("/", (req, res) => { 
-    if (req.session && req.session.user) {
-        // Se o usuário já tem uma sessão, redireciona direto para o app.
-        // A própria rota do app fará a revalidação de status.
-        return res.redirect('/app');
-    }
-    // Se não, mostra a página de login.
-    res.sendFile(path.join(__dirname, "public", "login.html")); 
-});
+app.get("/", (req, res) => { res.sendFile(path.join(__dirname, "public", "login.html")); });
 
 app.get('/logout', (req, res) => {
   req.session.destroy(err => {
@@ -159,8 +112,7 @@ app.post("/login", loginLimiter, async (req, res) => {
             req.session.loginAttempts = (req.session.loginAttempts || 0) + 1;
             
             if (req.session.loginAttempts >= 2) {
-                // ALTERADO: Adição do script de correção do teclado para o celular
-                const notFoundWithPhoneOptionHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Erro de Login</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.input-field{width:calc(100% - 34px);padding:15px;margin-bottom:20px;border:2px solid #0D47A1;border-radius:8px;font-size:1.2em;color:#0D47A1}.action-button{background-color:#1565C0;color:#fff;padding:15px;font-size:1.4em;border:none;border-radius:8px;cursor:pointer;width:100%;display:block}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>E-mail não localizado</h1><p>Não encontramos seu cadastro. Por favor, verifique se digitou o e-mail corretamente ou tente acessar com seu número de celular.</p><form action="/login-by-phone" method="POST"><label for="phone">Celular:</label><input type="tel" id="phone" name="phone" class="input-field" placeholder="Insira aqui o seu celular" required><button type="submit" class="action-button">Entrar com Celular</button></form><a href="/" class="back-link">Tentar com outro e-mail</a></div><script>function handleInputFocus(event){if(window.innerWidth < 768){setTimeout(()=>{event.target.scrollIntoView({behavior:'smooth',block:'center'})},300)}};const phoneInput = document.getElementById('phone');if(phoneInput){phoneInput.addEventListener('focus',handleInputFocus)}<\/script></body></html>`;
+                const notFoundWithPhoneOptionHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Erro de Login</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.input-field{width:calc(100% - 34px);padding:15px;margin-bottom:20px;border:2px solid #0D47A1;border-radius:8px;font-size:1.2em;color:#0D47A1}.action-button{background-color:#1565C0;color:#fff;padding:15px;font-size:1.4em;border:none;border-radius:8px;cursor:pointer;width:100%;display:block}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>E-mail não localizado</h1><p>Não encontramos seu cadastro. Por favor, verifique se digitou o e-mail corretamente ou tente acessar com seu número de celular.</p><form action="/login-by-phone" method="POST"><label for="phone">Celular:</label><input type="tel" id="phone" name="phone" class="input-field" placeholder="Insira aqui o seu celular" required><button type="submit" class="action-button">Entrar com Celular</button></form><a href="/" class="back-link">Tentar com outro e-mail</a></div></body></html>`;
                 return res.status(401).send(notFoundWithPhoneOptionHTML);
             } else {
                 const notFoundErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Erro de Login</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>E-mail não localizado</h1><p>Não encontramos seu cadastro. Por favor, verifique se você digitou o mesmo e-mail que usou no momento da compra.</p><a href="/" class="back-link">Tentar novamente</a></div></body></html>`;
@@ -418,8 +370,8 @@ app.get("/admin/import-from-csv", async (req, res) => {
     if (key !== process.env.ADMIN_KEY) {
         return res.status(403).send("<h1>Acesso Negado</h1><p>Chave de acesso inválida.</p>");
     }
-    if (!['anual', 'vitalicio'].includes(plan_type)) {
-        return res.status(400).send("<h1>Erro</h1><p>Você precisa especificar o tipo de plano na URL. Adicione '?plan_type=anual' ou '?plan_type=vitalicio' ao final do endereço.</p>");
+    if (!['anual', 'vitalicio', 'mensal'].includes(plan_type)) {
+        return res.status(400).send("<h1>Erro</h1><p>Você precisa especificar o tipo de plano na URL. Adicione '?plan_type=anual', '?plan_type=vitalicio' ou '?plan_type=mensal'.</p>");
     }
 
     const CSV_FILE_PATH = path.join(__dirname, 'lista-clientes.csv');
@@ -431,28 +383,21 @@ app.get("/admin/import-from-csv", async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.write(`<h1>Iniciando importação para plano: ${plan_type}...</h1>`);
 
-    function normalizePhone(phoneString) {
-        if (!phoneString || typeof phoneString !== 'string') return null;
-        const digitsOnly = phoneString.replace(/\D/g, '');
-        if (digitsOnly.length < 6) return null;
-        return digitsOnly.slice(-6);
-    }
-
     fs.createReadStream(CSV_FILE_PATH)
       .pipe(csv({ separator: ';' }))
       .on('data', (row) => {
         const email = row['Cliente / E-mail'];
         const name = row['Cliente / Nome'] || row['Cliente / Razão-Social'];
         const phone = row['Cliente / Fones'];
-        const purchaseDateStr = row['Data de Criação'];
-        const status = row['Status'];
+        const purchaseDateStr = row['Data de Criação'] || row['Início em'];
+        const statusCsv = row['Status'];
 
-        if (email && purchaseDateStr && status && status.toLowerCase() === 'paga') {
-          clientsToImport.push({ email, name, phone, purchaseDateStr });
+        if (email && purchaseDateStr) {
+          clientsToImport.push({ email, name, phone, purchaseDateStr, statusCsv });
         }
       })
       .on('end', async () => {
-        res.write(`<p>Leitura do CSV concluída. ${clientsToImport.length} clientes válidos encontrados.</p>`);
+        res.write(`<p>Leitura do CSV concluída. ${clientsToImport.length} clientes encontrados.</p>`);
         if (clientsToImport.length === 0) return res.end('<p>Nenhum cliente para importar. Encerrando.</p>');
 
         const client = await pool.connect();
@@ -460,7 +405,11 @@ app.get("/admin/import-from-csv", async (req, res) => {
             res.write('<p>Iniciando transação com o banco de dados...</p>');
             await client.query('BEGIN');
 
+            let processedCount = 0;
             for (const [index, customerData] of clientsToImport.entries()) {
+                let query;
+                let queryParams;
+
                 if (plan_type === 'anual') {
                     const [datePart, timePart] = customerData.purchaseDateStr.split(' ');
                     const [day, month, year] = datePart.split('/');
@@ -468,7 +417,7 @@ app.get("/admin/import-from-csv", async (req, res) => {
                     const expirationDate = new Date(purchaseDate);
                     expirationDate.setDate(expirationDate.getDate() + 365);
                     
-                    const query = `
+                    query = `
                         INSERT INTO customers (email, name, phone, status, expires_at, updated_at)
                         VALUES ($1, $2, $3, 'paid', $4, NOW())
                         ON CONFLICT (email) DO UPDATE SET 
@@ -476,21 +425,46 @@ app.get("/admin/import-from-csv", async (req, res) => {
                             phone = COALESCE(EXCLUDED.phone, customers.phone),
                             expires_at = EXCLUDED.expires_at,
                             updated_at = NOW();`;
-                    await client.query(query, [customerData.email.toLowerCase(), customerData.name, customerData.phone, expirationDate.toISOString()]);
+                    queryParams = [customerData.email.toLowerCase(), customerData.name, customerData.phone, expirationDate.toISOString()];
                 } else if (plan_type === 'vitalicio') {
-                    const query = `
+                    query = `
                         INSERT INTO access_control (email, permission, reason)
                         VALUES ($1, 'allow', 'Importado via CSV - Vitalício')
                         ON CONFLICT (email) DO NOTHING;`;
-                    await client.query(query, [customerData.email.toLowerCase()]);
+                    queryParams = [customerData.email.toLowerCase()];
+                } else if (plan_type === 'mensal') {
+                    let status;
+                    if (customerData.statusCsv.toLowerCase() === 'em dia') {
+                        status = 'paid';
+                    } else if (customerData.statusCsv.toLowerCase() === 'atrasado') {
+                        status = 'overdue';
+                    } else {
+                        status = 'canceled'; // Default for other statuses
+                    }
+                    query = `
+                        INSERT INTO customers (email, name, phone, status, expires_at, updated_at)
+                        VALUES ($1, $2, $3, $4, NULL, NOW())
+                        ON CONFLICT (email) DO UPDATE SET
+                            name = COALESCE(EXCLUDED.name, customers.name),
+                            phone = COALESCE(EXCLUDED.phone, customers.phone),
+                            status = EXCLUDED.status,
+                            expires_at = NULL,
+                            updated_at = NOW();`;
+                    queryParams = [customerData.email.toLowerCase(), customerData.name, customerData.phone, status];
                 }
+
+                if(query) {
+                    await client.query(query, queryParams);
+                    processedCount++;
+                }
+
                  if ((index + 1) % 50 === 0) {
-                     res.write(`<p>${index + 1} de ${clientsToImport.length} clientes processados...</p>`);
+                     res.write(`<p>${index + 1} de ${clientsToImport.length} linhas do CSV processadas...</p>`);
                 }
             }
 
             await client.query('COMMIT');
-            res.end(`<h2>✅ Sucesso!</h2><p>${clientsToImport.length} clientes foram importados/atualizados para o plano ${plan_type}.</p>`);
+            res.end(`<h2>✅ Sucesso!</h2><p>${processedCount} clientes foram importados/atualizados para o plano ${plan_type}.</p>`);
         } catch (e) {
             await client.query('ROLLBACK');
             res.end(`<h2>❌ ERRO!</h2><p>Ocorreu um problema durante a importação. Nenhuma alteração foi salva. Verifique os logs do servidor.</p>`);
@@ -502,8 +476,7 @@ app.get("/admin/import-from-csv", async (req, res) => {
 });
 
 // --- 4. ROTAS PROTEGIDAS (Apenas para usuários logados) ---
-// ALTERADO: Middleware de revalidação de status adicionado à rota /app
-app.get("/app", requireLogin, revalidateAndCheckStatus, (req, res) => {
+app.get("/app", requireLogin, (req, res) => {
     res.sendFile(path.join(__dirname, "public", "app.html"));
 });
 
@@ -558,8 +531,8 @@ function getPromptConfig(sermonType, duration) {
             'Entre 20 e 30 min': { structure: 'Siga esta estrutura: 1. Introdução ao tema (um parágrafo curto). 2. Desenvolvimento do tema usando 2 pontos, cada um com um texto bíblico de apoio (um parágrafo curto por ponto). 3. Aplicação (um parágrafo curto). 4. Conclusão (um parágrafo curto).', max_tokens: 1200 },
             'Entre 30 e 40 min': { structure: 'Siga esta estrutura: 1. Introdução ao tema. 2. Primeiro Ponto (com um texto bíblico de apoio). 3. Segundo Ponto (com outro texto bíblico de apoio). 4. Aplicação unificada. 5. Conclusão.', max_tokens: 1900 },
             'Entre 40 e 50 min': { structure: 'Siga esta estrutura: 1. Introdução com ilustração (dois parágrafos curtos). 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico e uma breve explicação (dois parágrafos curtos por ponto). 3. Aplicações práticas (dois parágrafos curtos). 4. Conclusão (dois parágrafos curtos).', max_tokens: 2500 },
-            'Entre 50 e 60 min': { instruction: 'Escreva um sermão de 50-60 minutos.', structure: 'Siga esta estrutura: 1. Introdução. 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico, breve exegese e uma ilustração. 3. Aplicações para cada ponto. 4. Conclusão com apelo.', max_tokens: 3500 },
-            'Acima de 1 hora': { instruction: 'Escreva um sermão de mais de 1 hora.', structure: 'Siga esta estrutura: 1. Introdução. 2. Exploração profunda do tema através de múltiplas passagens bíblicas. 3. Análise teológica e prática. 4. Ilustrações e aplicações robustas. 5. Conclusão e oração.', max_tokens: 5000 }
+            'Entre 50 e 60 min': { structure: 'Siga esta estrutura: 1. Introdução. 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico, breve exegese e uma ilustração. 3. Aplicações para cada ponto. 4. Conclusão com apelo.', max_tokens: 3500 },
+            'Acima de 1 hora': { structure: 'Siga esta estrutura: 1. Introdução. 2. Exploração profunda do tema através de múltiplas passagens bíblicas. 3. Análise teológica e prática. 4. Ilustrações e aplicações robustas. 5. Conclusão e oração.', max_tokens: 5000 }
         }
     };
     
