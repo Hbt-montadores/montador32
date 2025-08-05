@@ -1,4 +1,4 @@
-// server.js - Versão 6.7 (Correção Definitiva do Parse de JSON e Lógica de Prompts)
+// server.js - Versão 6.8 (Correção da Importação Mensal e Íntegro)
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -22,7 +22,7 @@ app.set('trust proxy', 1);
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/healthz", (req, res) => res.status(200).send("OK"));
 app.use(express.urlencoded({ extended: true }));
-app.use(express.json()); // LINHA CRUCIAL RESTAURADA
+app.use(express.json());
 
 const loginLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000, max: 15,
@@ -47,6 +47,35 @@ function requireLogin(req, res, next) {
   if (req.session && req.session.user) { return next(); } 
   else { return res.redirect('/'); }
 }
+
+const getAdminPanelHeader = (key, activePage) => {
+    return `
+        <style>
+            body { font-family: sans-serif; padding: 20px; } table { border-collapse: collapse; width: 100%; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }
+            .actions a { margin-right: 10px; } .nav-links a { margin-right: 20px; text-decoration: none; color: #1565C0; }
+            .nav-links a.active { font-weight: bold; text-decoration: underline; }
+            .nav-container { margin-bottom: 20px; } .import-links { margin-top: 10px; }
+            .import-links a { font-weight: bold; }
+        </style>
+        <h1>Painel de Administração</h1>
+        <div class="nav-container">
+            <div class="nav-links">
+                <a href="/admin/view-data?key=${key}" ${activePage === 'data' ? 'class="active"' : ''}>Clientes da Eduzz</a>
+                <a href="/admin/view-access-control?key=${key}" ${activePage === 'access' ? 'class="active"' : ''}>Acesso Manual (Vitalícios)</a>
+                <a href="/admin/view-activity?key=${key}" ${activePage === 'activity' ? 'class="active"' : ''}>Log de Atividades</a>
+            </div>
+            <hr>
+            <h3>Importação de Clientes (use com cuidado)</h3>
+            <div class="nav-links import-links">
+                <a href="/admin/import-from-csv?key=${key}&plan_type=anual">[Importar Clientes Anuais via CSV]</a>
+                <a href="/admin/import-from-csv?key=${key}&plan_type=vitalicio">[Importar Clientes Vitalícios via CSV]</a>
+                <a href="/admin/import-from-csv?key=${key}&plan_type=mensal">[Importar Clientes Mensais via CSV]</a>
+            </div>
+        </div>
+    `;
+};
+
 
 // --- 3. ROTAS PÚBLICAS E DE ADMINISTRAÇÃO ---
 const ALLOW_ANYONE = process.env.ALLOW_ANYONE === "true";
@@ -202,33 +231,6 @@ app.post("/eduzz/webhook", async (req, res) => {
     res.status(400).send("Dados insuficientes no webhook.");
   }
 });
-
-const getAdminPanelHeader = (key, activePage) => {
-    return `
-        <style>
-            body { font-family: sans-serif; padding: 20px; } table { border-collapse: collapse; width: 100%; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }
-            .actions a { margin-right: 10px; } .nav-links a { margin-right: 20px; text-decoration: none; color: #1565C0; }
-            .nav-links a.active { font-weight: bold; text-decoration: underline; }
-            .nav-container { margin-bottom: 20px; } .import-links { margin-top: 10px; }
-            .import-links a { font-weight: bold; }
-        </style>
-        <h1>Painel de Administração</h1>
-        <div class="nav-container">
-            <div class="nav-links">
-                <a href="/admin/view-data?key=${key}" ${activePage === 'data' ? 'class="active"' : ''}>Clientes da Eduzz</a>
-                <a href="/admin/view-access-control?key=${key}" ${activePage === 'access' ? 'class="active"' : ''}>Acesso Manual (Vitalícios)</a>
-                <a href="/admin/view-activity?key=${key}" ${activePage === 'activity' ? 'class="active"' : ''}>Log de Atividades</a>
-            </div>
-            <hr>
-            <h3>Importação de Clientes (use com cuidado)</h3>
-            <div class="nav-links import-links">
-                <a href="/admin/import-from-csv?key=${key}&plan_type=anual">[Importar Clientes Anuais via CSV]</a>
-                <a href="/admin/import-from-csv?key=${key}&plan_type=vitalicio">[Importar Clientes Vitalícios via CSV]</a>
-            </div>
-        </div>
-    `;
-};
 
 app.get("/admin/view-data", async (req, res) => {
     const { key } = req.query;
@@ -392,12 +394,18 @@ app.get("/admin/import-from-csv", async (req, res) => {
         const purchaseDateStr = row['Data de Criação'] || row['Início em'];
         const statusCsv = row['Status'];
 
-        if (email && purchaseDateStr) {
-          clientsToImport.push({ email, name, phone, purchaseDateStr, statusCsv });
+        if (plan_type === 'mensal') {
+            if (email) {
+                clientsToImport.push({ email, name, phone, purchaseDateStr, statusCsv });
+            }
+        } else {
+             if (email && purchaseDateStr && statusCsv && statusCsv.toLowerCase() === 'paga') {
+                clientsToImport.push({ email, name, phone, purchaseDateStr, statusCsv });
+            }
         }
       })
       .on('end', async () => {
-        res.write(`<p>Leitura do CSV concluída. ${clientsToImport.length} clientes encontrados.</p>`);
+        res.write(`<p>Leitura do CSV concluída. ${clientsToImport.length} clientes encontrados para processar.</p>`);
         if (clientsToImport.length === 0) return res.end('<p>Nenhum cliente para importar. Encerrando.</p>');
 
         const client = await pool.connect();
@@ -405,7 +413,6 @@ app.get("/admin/import-from-csv", async (req, res) => {
             res.write('<p>Iniciando transação com o banco de dados...</p>');
             await client.query('BEGIN');
 
-            let processedCount = 0;
             for (const [index, customerData] of clientsToImport.entries()) {
                 let query;
                 let queryParams;
@@ -421,8 +428,8 @@ app.get("/admin/import-from-csv", async (req, res) => {
                         INSERT INTO customers (email, name, phone, status, expires_at, updated_at)
                         VALUES ($1, $2, $3, 'paid', $4, NOW())
                         ON CONFLICT (email) DO UPDATE SET 
-                            name = COALESCE(EXCLUDED.name, customers.name),
-                            phone = COALESCE(EXCLUDED.phone, customers.phone),
+                            name = COALESCE($2, customers.name),
+                            phone = COALESCE($3, customers.phone),
                             expires_at = EXCLUDED.expires_at,
                             updated_at = NOW();`;
                     queryParams = [customerData.email.toLowerCase(), customerData.name, customerData.phone, expirationDate.toISOString()];
@@ -439,32 +446,27 @@ app.get("/admin/import-from-csv", async (req, res) => {
                     } else if (customerData.statusCsv.toLowerCase() === 'atrasado') {
                         status = 'overdue';
                     } else {
-                        status = 'canceled'; // Default for other statuses
+                        status = 'canceled';
                     }
                     query = `
                         INSERT INTO customers (email, name, phone, status, expires_at, updated_at)
                         VALUES ($1, $2, $3, $4, NULL, NOW())
                         ON CONFLICT (email) DO UPDATE SET
-                            name = COALESCE(EXCLUDED.name, customers.name),
-                            phone = COALESCE(EXCLUDED.phone, customers.phone),
+                            name = COALESCE($2, customers.name),
+                            phone = COALESCE($3, customers.phone),
                             status = EXCLUDED.status,
                             expires_at = NULL,
                             updated_at = NOW();`;
                     queryParams = [customerData.email.toLowerCase(), customerData.name, customerData.phone, status];
                 }
 
-                if(query) {
+                if (query) {
                     await client.query(query, queryParams);
-                    processedCount++;
-                }
-
-                 if ((index + 1) % 50 === 0) {
-                     res.write(`<p>${index + 1} de ${clientsToImport.length} linhas do CSV processadas...</p>`);
                 }
             }
 
             await client.query('COMMIT');
-            res.end(`<h2>✅ Sucesso!</h2><p>${processedCount} clientes foram importados/atualizados para o plano ${plan_type}.</p>`);
+            res.end(`<h2>✅ Sucesso!</h2><p>${clientsToImport.length} clientes foram importados/atualizados para o plano ${plan_type}.</p>`);
         } catch (e) {
             await client.query('ROLLBACK');
             res.end(`<h2>❌ ERRO!</h2><p>Ocorreu um problema durante a importação. Nenhuma alteração foi salva. Verifique os logs do servidor.</p>`);
@@ -505,6 +507,7 @@ async function fetchWithTimeout(url, options, timeout = 90000) {
 
 function getPromptConfig(sermonType, duration) {
     const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '').trim();
+    const fallbackConfig = { structure: 'Gere um sermão completo com exegese e aplicação prática.', max_tokens: 2000 };
 
     const configs = {
         'Expositivo': {
@@ -536,7 +539,6 @@ function getPromptConfig(sermonType, duration) {
         }
     };
     
-    const fallbackConfig = configs['Expositivo']['Entre 20 e 30 min'];
     let config = fallbackConfig;
     if (configs[cleanSermonType] && configs[cleanSermonType][duration]) {
         config = configs[cleanSermonType][duration];
