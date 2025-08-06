@@ -1,4 +1,4 @@
-// db.js - Versão 5.0 (Arquitetura Final de Acesso Baseada em Faturas)
+// db.js - Versão 5.0 (Nova Arquitetura com Acessos Separados e Migração)
 const { Pool } = require('pg');
 
 const pool = new Pool({
@@ -6,101 +6,241 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+// FUNÇÃO DE MIGRAÇÃO: Executa uma única vez para mover dados antigos para a nova estrutura.
+const runMigration = async (client) => {
+    // 1. Verificar se a coluna 'status' (antiga) existe. Se não, a migração provavelmente já rodou.
+    const checkColumnQuery = `SELECT column_name FROM information_schema.columns WHERE table_name='customers' AND column_name='status'`;
+    const res = await client.query(checkColumnQuery);
+    if (res.rowCount === 0) {
+        console.log('✔️ A migração de dados parece já ter sido executada. Pulando etapa.');
+        return;
+    }
+    console.log('⚠️ Detectada estrutura antiga. Iniciando migração de dados...');
+
+    // 2. Mover dados de 'expires_at' para 'annual_expires_at'
+    await client.query(`UPDATE customers SET annual_expires_at = expires_at WHERE expires_at IS NOT NULL;`);
+    console.log('   -> Dados de "expires_at" movidos para "annual_expires_at".');
+
+    // 3. Mover dados de 'status' para 'monthly_status'
+    await client.query(`UPDATE customers SET monthly_status = status WHERE status IN ('paid', 'overdue', 'canceled');`);
+    console.log('   -> Dados de "status" movidos para "monthly_status".');
+    
+    // 4. Remover as colunas antigas para finalizar a migração
+    await client.query(`ALTER TABLE customers DROP COLUMN status, DROP COLUMN expires_at;`);
+    console.log('✔️ Migração concluída: Colunas antigas removidas.');
+};
+
 (async () => {
-  try {
-    // 1. Tabela customers com a nova estrutura completa
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS customers (
-        id SERIAL PRIMARY KEY,
-        email TEXT UNIQUE NOT NULL,
-        name TEXT,
-        phone TEXT,
-        monthly_status TEXT,
-        annual_expires_at TIMESTAMP WITH TIME ZONE,
-        last_annual_invoice_id BIGINT,
-        last_annual_paid_at TIMESTAMP WITH TIME ZONE,
-        last_monthly_invoice_id BIGINT,
-        grace_sermons_used INT DEFAULT 0,
-        grace_period_month TEXT,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-      );
-    `);
-    
-    // Garante que todas as colunas novas e antigas existam antes da migração
-    await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS monthly_status TEXT;`);
-    await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS annual_expires_at TIMESTAMP WITH TIME ZONE;`);
-    await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_annual_invoice_id BIGINT;`);
-    await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_annual_paid_at TIMESTAMP WITH TIME ZONE;`);
-    await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_monthly_invoice_id BIGINT;`);
-    await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS grace_sermons_used INT DEFAULT 0;`);
-    await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS grace_period_month TEXT;`);
-    await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS name TEXT;`);
-    await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone TEXT;`);
-    
-    // 2. Script de Migração ÚNICO para dados existentes
-    await pool.query(`
-        DO $$
-        BEGIN
-            -- Migra a coluna 'status' antiga para 'monthly_status'
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='status') THEN
-                UPDATE customers SET monthly_status = status WHERE monthly_status IS NULL;
-            END IF;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
 
-            -- Migra a coluna 'expires_at' antiga para 'annual_expires_at'
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='expires_at') THEN
-                UPDATE customers SET annual_expires_at = expires_at WHERE annual_expires_at IS NULL;
-            END IF;
-        END$$;
-    `);
-    console.log('✔️ Tabela "customers" pronta com a arquitetura final.');
+        // Tabela customers com a NOVA ESTRUTURA
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS customers (
+            id SERIAL PRIMARY KEY,
+            email TEXT UNIQUE NOT NULL,
+            name TEXT,
+            phone TEXT,
+            -- Novos campos de acesso
+            monthly_status TEXT, -- pode ser 'paid', 'overdue', 'canceled'
+            last_monthly_invoice_id TEXT,
+            annual_expires_at TIMESTAMP WITH TIME ZONE,
+            last_annual_invoice_id TEXT,
+            last_annual_paid_at TIMESTAMP WITH TIME ZONE,
+            -- Campos de cortesia
+            grace_sermons_used INT DEFAULT 0,
+            grace_period_month TEXT,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+          );
+        `);
 
-    // 3. Tabela de controle manual, agora com invoice_id
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS access_control (
-        id SERIAL PRIMARY KEY,
-        email TEXT UNIQUE NOT NULL,
-        permission TEXT NOT NULL CHECK (permission IN ('allow', 'block')),
-        reason TEXT,
-        invoice_id BIGINT,
-        product_id BIGINT,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-      );
-    `);
-    await pool.query(`ALTER TABLE access_control ADD COLUMN IF NOT EXISTS invoice_id BIGINT;`);
-    await pool.query(`ALTER TABLE access_control ADD COLUMN IF NOT EXISTS product_id BIGINT;`);
-    console.log('✔️ Tabela "access_control" pronta.');
-    
-    // 4. Tabelas de sessões e atividades (sem alterações estruturais)
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS "user_sessions" (
-        "sid" varchar NOT NULL COLLATE "default", "sess" json NOT NULL, "expire" timestamp(6) NOT NULL
-      ) WITH (OIDS=FALSE);
-      DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'session_pkey' AND conrelid = 'user_sessions'::regclass) THEN
-      ALTER TABLE "user_sessions" ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE;
-      END IF; END; $$;
-      CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "user_sessions" ("expire");
-    `);
-    console.log('✔️ Tabela "user_sessions" pronta.');
+        // Comandos para adicionar novas colunas caso a tabela já exista (garante retrocompatibilidade)
+        const columns = [
+            'monthly_status TEXT', 'last_monthly_invoice_id TEXT', 
+            'annual_expires_at TIMESTAMP WITH TIME ZONE', 'last_annual_invoice_id TEXT', 
+            'last_annual_paid_at TIMESTAMP WITH TIME ZONE', 'grace_sermons_used INT DEFAULT 0',
+            'grace_period_month TEXT'
+        ];
+        for (const col of columns) {
+            await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS ${col};`);
+        }
+        
+        // Executa a migração dos dados
+        await runMigration(client);
 
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS activity_log (
-        id SERIAL PRIMARY KEY,
-        user_email TEXT NOT NULL,
-        sermon_topic TEXT,
-        sermon_audience TEXT,
-        sermon_type TEXT,
-        sermon_duration TEXT,
-        model_used TEXT,
-        prompt_instruction TEXT,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-      );
-    `);
-    console.log('✔️ Tabela "activity_log" pronta.');
+        console.log('✔️ Tabela "customers" pronta com a arquitetura final.');
 
-  } catch (err) {
-    console.error('❌ Erro ao inicializar o banco de dados:', err);
-  }
+        // Tabela de controle manual com NOVAS COLUNAS
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS access_control (
+            id SERIAL PRIMARY KEY,
+            email TEXT UNIQUE NOT NULL,
+            permission TEXT NOT NULL CHECK (permission IN ('allow', 'block')),
+            reason TEXT,
+            product_id TEXT,
+            invoice_id TEXT,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+          );
+        `);
+        await client.query(`ALTER TABLE access_control ADD COLUMN IF NOT EXISTS product_id TEXT;`);
+        await client.query(`ALTER TABLE access_control ADD COLUMN IF NOT EXISTS invoice_id TEXT;`);
+        console.log('✔️ Tabela "access_control" pronta.');
+        
+        // Tabela de sessões
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS "user_sessions" (
+            "sid" varchar NOT NULL COLLATE "default", "sess" json NOT NULL, "expire" timestamp(6) NOT NULL
+          ) WITH (OIDS=FALSE);
+          DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'session_pkey' AND conrelid = 'user_sessions'::regclass) THEN
+          ALTER TABLE "user_sessions" ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE;
+          END IF; END; $$;
+          CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "user_sessions" ("expire");
+        `);
+        console.log('✔️ Tabela "user_sessions" pronta.');
+
+        // Tabela de atividades
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS activity_log (
+            id SERIAL PRIMARY KEY,
+            user_email TEXT NOT NULL,
+            sermon_topic TEXT,
+            sermon_audience TEXT,
+            sermon_type TEXT,
+            sermon_duration TEXT,
+            model_used TEXT,
+            prompt_instruction TEXT,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+          );
+        `);
+        await client.query(`ALTER TABLE activity_log ADD COLUMN IF NOT EXISTS prompt_instruction TEXT;`);
+        console.log('✔️ Tabela "activity_log" pronta.');
+
+        await client.query('COMMIT');
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('❌ Erro ao inicializar/migrar o banco de dados:', err);
+    } finally {
+        client.release();
+    }
 })();
+
+async function ensureCustomerExists(client, email, name, phone) {
+    const query = `
+        INSERT INTO customers (email, name, phone)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (email) DO UPDATE SET
+            name = COALESCE(EXCLUDED.name, customers.name),
+            phone = COALESCE(EXCLUDED.phone, customers.phone)
+        RETURNING *;
+    `;
+    return client.query(query, [email.toLowerCase(), name, phone]);
+}
+
+// NOVA FUNÇÃO
+async function updateAnnualAccess(email, name, phone, invoiceId, paidAt) {
+    const paidDate = new Date(paidAt);
+    const expirationDate = new Date(paidDate);
+    expirationDate.setDate(expirationDate.getDate() + 366); // Garante um ano completo
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await ensureCustomerExists(client, email, name, phone);
+        const query = `
+            UPDATE customers SET
+                annual_expires_at = $1,
+                last_annual_invoice_id = $2,
+                last_annual_paid_at = $3,
+                updated_at = NOW()
+            WHERE email = $4;
+        `;
+        await client.query(query, [expirationDate.toISOString(), invoiceId, paidDate.toISOString(), email.toLowerCase()]);
+        await client.query('COMMIT');
+    } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+    } finally {
+        client.release();
+    }
+}
+
+// NOVA FUNÇÃO
+async function updateMonthlyStatus(email, name, phone, invoiceId, status) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await ensureCustomerExists(client, email, name, phone);
+        const query = `
+            UPDATE customers SET
+                monthly_status = $1,
+                last_monthly_invoice_id = $2,
+                updated_at = NOW()
+            WHERE email = $3;
+        `;
+        await client.query(query, [status, invoiceId, email.toLowerCase()]);
+        await client.query('COMMIT');
+    } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+    } finally {
+        client.release();
+    }
+}
+
+// NOVA FUNÇÃO
+async function updateLifetimeAccess(email, name, phone, invoiceId, productId) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await ensureCustomerExists(client, email, name, phone);
+        const query = `
+            INSERT INTO access_control (email, permission, reason, invoice_id, product_id)
+            VALUES ($1, 'allow', 'Acesso via Webhook Eduzz', $2, $3)
+            ON CONFLICT (email) DO UPDATE SET
+                permission = 'allow',
+                reason = 'Acesso via Webhook Eduzz (Atualizado)',
+                invoice_id = EXCLUDED.invoice_id,
+                product_id = EXCLUDED.product_id,
+                created_at = NOW();
+        `;
+        await client.query(query, [email.toLowerCase(), invoiceId, productId]);
+        await client.query('COMMIT');
+    } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+    } finally {
+        client.release();
+    }
+}
+
+// NOVA FUNÇÃO
+async function revokeAccessByInvoice(invoiceId, productType) {
+    let query;
+    if (productType === 'annual') {
+        query = `UPDATE customers SET annual_expires_at = NOW() WHERE last_annual_invoice_id = $1;`;
+    } else if (productType === 'monthly') {
+        query = `UPDATE customers SET monthly_status = 'canceled' WHERE last_monthly_invoice_id = $1;`;
+    } else if (productType === 'lifetime') {
+        query = `DELETE FROM access_control WHERE invoice_id = $1;`;
+    } else {
+        return; // Não faz nada se o tipo de produto não for de acesso
+    }
+    await pool.query(query, [invoiceId]);
+}
+
+// NOVA FUNÇÃO
+async function registerProspect(email, name, phone) {
+    // Apenas insere o cliente se ele não existir, não altera status de quem já comprou
+    const query = `
+        INSERT INTO customers (email, name, phone)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (email) DO NOTHING;
+    `;
+    await pool.query(query, [email.toLowerCase(), name, phone]);
+}
+
 
 function normalizePhone(phoneString) {
     if (!phoneString || typeof phoneString !== 'string') return null;
@@ -114,73 +254,6 @@ async function getCustomerRecordByEmail(email) {
   return rows[0] || null;
 }
 
-// ---- NOVAS FUNÇÕES DE ATUALIZAÇÃO ----
-
-async function upsertCustomer(email, name, phone) {
-    const query = `
-        INSERT INTO customers (email, name, phone, updated_at)
-        VALUES ($1, $2, $3, NOW())
-        ON CONFLICT (email) DO UPDATE SET
-            name = COALESCE(EXCLUDED.name, customers.name),
-            phone = COALESCE(EXCLUDED.phone, customers.phone),
-            updated_at = NOW()
-        RETURNING *;`;
-    const { rows } = await pool.query(query, [email.toLowerCase(), name, phone]);
-    return rows[0];
-}
-
-async function updateMonthlyStatus(email, status, invoiceId) {
-  await pool.query(
-    `UPDATE customers SET monthly_status = $1, last_monthly_invoice_id = $2, updated_at = now() WHERE email = $3`,
-    [status, invoiceId, email.toLowerCase()]
-  );
-}
-
-async function updateAnnualAccess(email, paidAt, invoiceId) {
-    const expirationDate = new Date(paidAt);
-    expirationDate.setFullYear(expirationDate.getFullYear() + 1);
-    
-    const customer = await getCustomerRecordByEmail(email);
-    // Lógica de renovação antecipada: se já houver um plano válido, soma ao tempo existente
-    if (customer && customer.annual_expires_at && new Date(customer.annual_expires_at) > new Date()) {
-        const existingExpiration = new Date(customer.annual_expires_at);
-        existingExpiration.setFullYear(existingExpiration.getFullYear() + 1);
-        
-        await pool.query(
-          `UPDATE customers SET annual_expires_at = $1, last_annual_paid_at = $2, last_annual_invoice_id = $3, updated_at = now() WHERE email = $4`,
-          [existingExpiration.toISOString(), paidAt, invoiceId, email.toLowerCase()]
-        );
-    } else {
-        await pool.query(
-          `UPDATE customers SET annual_expires_at = $1, last_annual_paid_at = $2, last_annual_invoice_id = $3, updated_at = now() WHERE email = $4`,
-          [expirationDate.toISOString(), paidAt, invoiceId, email.toLowerCase()]
-        );
-    }
-}
-
-async function updateLifetimeAccess(email, invoiceId, productId, reason = 'Compra de produto vitalício') {
-    const query = `
-        INSERT INTO access_control (email, permission, reason, invoice_id, product_id)
-        VALUES ($1, 'allow', $2, $3, $4)
-        ON CONFLICT (email) DO UPDATE SET
-            permission = EXCLUDED.permission,
-            reason = EXCLUDED.reason,
-            invoice_id = EXCLUDED.invoice_id,
-            product_id = EXCLUDED.product_id;`;
-    await pool.query(query, [email.toLowerCase(), reason, invoiceId, productId]);
-}
-
-async function revokeAccessByInvoice(invoiceId) {
-    // Revoga acesso vitalício
-    await pool.query(`DELETE FROM access_control WHERE invoice_id = $1 AND permission = 'allow'`, [invoiceId]);
-    // Revoga acesso anual
-    await pool.query(`UPDATE customers SET annual_expires_at = NULL, last_annual_invoice_id = NULL, last_annual_paid_at = NULL WHERE last_annual_invoice_id = $1`, [invoiceId]);
-    // Revoga acesso mensal (define como cancelado)
-    await pool.query(`UPDATE customers SET monthly_status = 'canceled' WHERE last_monthly_invoice_id = $1`, [invoiceId]);
-}
-
-// ---- FUNÇÕES ANTIGAS E AUXILIARES (sem mudanças) ----
-
 async function getCustomerRecordByPhone(phone) {
   const normalizedUserInput = normalizePhone(phone);
   if (!normalizedUserInput) return null;
@@ -192,7 +265,8 @@ async function getCustomerRecordByPhone(phone) {
   return rows[0] || null;
 }
 
-async function getManualPermission(email) {
+// RENOMEADA E ATUALIZADA (era getManualPermission)
+async function getAccessControlRule(email) {
     const { rows } = await pool.query(`SELECT * FROM access_control WHERE email = $1`, [email.toLowerCase()]);
     return rows[0] || null;
 }
@@ -219,13 +293,12 @@ module.exports = {
   pool,
   getCustomerRecordByEmail,
   getCustomerRecordByPhone,
-  getManualPermission,
+  getAccessControlRule, // NOVA
+  updateAnnualAccess,   // NOVA
+  updateMonthlyStatus,  // NOVA
+  updateLifetimeAccess, // NOVA
+  revokeAccessByInvoice,// NOVA
+  registerProspect,     // NOVA
   logSermonActivity,
-  updateGraceSermons,
-  // Exportando as novas funções
-  upsertCustomer,
-  updateMonthlyStatus,
-  updateAnnualAccess,
-  updateLifetimeAccess,
-  revokeAccessByInvoice
+  updateGraceSermons
 };
