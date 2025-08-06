@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bem-vindo! - Montador de Sermões 3.2</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="/manifest.json">
+</head>
+<body>
+    <header>
+        <img src="https://cdn.glitch.global/db74bd9b-d683-421c-9223-f55b917c9dce/logo.png?v=1734385573934" alt="Logo do Montador de Sermões 3.2" class="logo">
+    </header>
+    
+    <div class="welcome-container">
+        <h1>Parabéns!</h1>
+        <p>Seja bem-vindo ao Montador de Sermões 3.2. Para a melhor experiência, recomendamos instalar o atalho do aplicativo em seu dispositivo.</p>
+        <button id="start-button" class="start-button">Começar</button>
+    </div>
+
+    <script>
+        let deferredPrompt;
+
+        // 1. Captura o evento de instalação se o PWA ainda não foi instalado
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+        });
+
+        // 2. Lógica do botão "Começar"
+        const startButton = document.getElementById('start-button');
+        startButton.addEventListener('click', async () => {
+            // Marca imediatamente que a tela foi vista para não bloquear o usuário
+            localStorage.setItem('welcomeScreenSeen', 'true');
+
+            // Tenta disparar a instalação do PWA
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    console.log('Usuário aceitou a instalação do PWA.');
+                } else {
+                    console.log('Usuário recusou a instalação do PWA.');
+                }
+                deferredPrompt = null; // O prompt só pode ser usado uma vez
+            }
+            
+            // Redireciona para o aplicativo principal, independentemente do resultado
+            window.location.href = '/app';
+        });
+    </script>
+</body>
+</html>
