@@ -8,15 +8,12 @@ body {
     text-align: center;
 }
 
-header {
-    width: 100%;
-    margin-bottom: 20px;
-}
-
+/* Logo */
 header .logo {
     width: 100%;
     max-height: 150px;
     object-fit: contain;
+    margin-bottom: 20px;
 }
 
 /* Título principal */
@@ -27,7 +24,7 @@ h1 {
 }
 
 /* Container do formulário */
-#form-container, #options-container, #login-container {
+#form-container, #options-container, #login-container { /* Adicionado #login-container aqui */
     background-color: #FFFFFF;
     padding: 30px;
     border-radius: 15px;
@@ -48,14 +45,14 @@ h1 {
 
 /* Campo de entrada */
 .input-field {
-    width: calc(100% - 4px);
+    width: calc(100% - 4px); /* Ajustar largura para alinhar com o fundo branco */
     padding: 15px;
     margin-bottom: 20px;
     border: 2px solid #0D47A1;
     border-radius: 8px;
     font-size: 1.2em;
     color: #0D47A1;
-    box-sizing: border-box;
+    box-sizing: border-box; /* Garante que a borda faça parte do tamanho total */
 }
 
 /* Botões gerais */
@@ -75,58 +72,6 @@ button {
 button:hover {
     background-color: #1E88E5;
 }
-
-/* --- ESTILOS PARA NOVAS FUNCIONALIDADES --- */
-
-/* Contêiner para o botão "Atalho" no topo */
-.top-right-actions {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-}
-
-/* Estilo para o botão de "Atalho" (PWA) */
-.install-button {
-  background-color: #4CAF50;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 10px 15px;
-  font-size: 0.9em;
-  font-weight: bold;
-  cursor: pointer;
-  width: auto;
-  margin: 0;
-}
-
-.install-button:hover {
-  background-color: #45a049;
-}
-
-/* MUDANÇA: Contêiner para o link "Desconectar" no canto inferior direito */
-.bottom-right-actions {
-    position: fixed; /* Fixo para não rolar com a página */
-    bottom: 20px;
-    right: 20px;
-    z-index: 1000; /* Garante que fique por cima de outros elementos */
-}
-
-/* Estilo para o link de "Desconectar" (apenas texto) */
-.logout-link {
-    background-color: transparent;
-    color: #d32f2f; /* Texto vermelho */
-    text-decoration: underline;
-    font-size: 1em;
-    font-weight: bold;
-    padding: 5px;
-    border: none;
-    cursor: pointer;
-}
-
-.logout-link:hover {
-    color: #b71c1c; /* Vermelho mais escuro */
-}
-
 
 /* Tela de carregamento com spinner */
 .loading-screen {
@@ -170,17 +115,17 @@ button:hover {
 
 /* Estilos para o campo de senha grande */
 .password-input-large {
-    font-size: 3em !important;
-    text-align: center;
-    padding: 20px 10px !important;
-    letter-spacing: 0.1em;
-    height: auto !important;
+    font-size: 3em !important; /* Tamanho da fonte bem grande */
+    text-align: center; /* Centralizar o texto dentro do campo */
+    padding: 20px 10px !important; /* Mais padding vertical */
+    letter-spacing: 0.1em; /* Espaçamento entre os caracteres para melhor visualização */
+    height: auto !important; /* Ajustar altura automaticamente */
 }
 
-/* Mensagem de erro */
+/* Mensagem de erro (se ainda for usada no frontend, mas no caso atual, o backend envia uma página) */
 .error-message {
-    color: #D32F2F;
-    background-color: #FFCDD2;
+    color: #D32F2F; /* Cor vermelha para erro */
+    background-color: #FFCDD2; /* Fundo vermelho claro */
     border: 1px solid #D32F2F;
     padding: 10px;
     border-radius: 5px;
@@ -188,27 +133,69 @@ button:hover {
     text-align: center;
 }
 
-/* Estilo para o texto de aviso na tela de login */
-.warning-text {
-  display: block;
-  margin-top: -15px;
-  margin-bottom: 15px;
-  font-size: 0.9em;
-  color: #555;
-  text-align: center;
+/* --- Estilos para os Novos Botões de Ação e Telas --- */
+
+.top-right-actions {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    z-index: 1000;
 }
 
-/* Estilo para o container de erro */
-.error-content {
-    background-color: #FFFFFF;
-    padding: 30px;
-    border-radius: 15px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-    max-width: 500px;
-    margin: 20px auto;
+.bottom-right-actions {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    z-index: 1000;
+}
+
+.install-button {
+    padding: 8px 12px;
+    font-size: 0.9em;
+    background-color: #4CAF50; /* Um verde para a ação de instalar */
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.logout-link {
+    font-size: 0.9em;
+    color: white; /* --- SUA MUDANÇA AQUI --- */
+    background-color: rgba(13, 71, 161, 0.7); /* Fundo azul escuro semi-transparente */
+    padding: 8px 12px;
+    border-radius: 5px;
+    text-decoration: none;
+}
+
+.logout-link:hover {
+    background-color: rgba(211, 47, 47, 0.9); /* Fica vermelho ao passar o mouse */
+}
+
+.welcome-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 80vh;
     text-align: center;
 }
 
-.error-content p {
+.welcome-container h1 {
+    font-size: 2.5em;
     margin-bottom: 20px;
+}
+
+.welcome-container p {
+    font-size: 1.2em;
+    max-width: 500px;
+    margin-bottom: 40px;
+}
+
+.welcome-container .start-button {
+    font-size: 1.8em;
+    padding: 20px 40px;
+    font-weight: bold;
+    width: auto;
 }
