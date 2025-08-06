@@ -1,4 +1,4 @@
-// server.js - Versão 7.4 (Fusão Final Completa com Cortesia e Admin)
+// server.js - Versão 8.0 (Nova Arquitetura com Acessos Independentes)
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -11,8 +11,21 @@ const rateLimit = require('express-rate-limit');
 const fs = require('fs');
 const csv = require('csv-parser');
 
-// MUDANÇA: Adicionada a função `updateGraceSermons` que o novo código precisa
-const { pool, markStatus, getCustomerRecordByEmail, getCustomerRecordByPhone, getManualPermission, logSermonActivity, updateGraceSermons } = require('./db');
+// NOVA LÓGICA: Importa as novas funções do db.js v5 para gerenciar acessos específicos.
+// A função 'markStatus' foi removida em favor das novas funções mais específicas.
+const { 
+    pool, 
+    getCustomerRecordByEmail, 
+    getCustomerRecordByPhone, 
+    getAccessControlRule, // Substitui getManualPermission
+    updateAnnualAccess,      // Nova função
+    updateMonthlyStatus,     // Nova função
+    updateLifetimeAccess,    // Nova função
+    revokeAccessByInvoice,   // Nova função
+    logSermonActivity, 
+    updateGraceSermons,
+    registerProspect         // Nova função
+} = require('./db');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -52,7 +65,6 @@ function requireLogin(req, res, next) {
 // --- 3. ROTAS PÚBLICAS E DE ADMINISTRAÇÃO ---
 const ALLOW_ANYONE = process.env.ALLOW_ANYONE === "true";
 
-// MUDANÇA: Implementa o login automático se já houver sessão
 app.get("/", (req, res) => {
     if (req.session && req.session.user) {
         return res.redirect('/app');
@@ -68,31 +80,47 @@ app.get('/logout', (req, res) => {
   });
 });
 
+// NOVA LÓGICA: Função 'checkAccessAndLogin' reescrita para a Hierarquia da Regra de Ouro.
 const checkAccessAndLogin = async (req, res, customer) => {
     const now = new Date();
+
+    // 1. Verificação de Bloqueio Manual
+    const accessRule = await getAccessControlRule(customer.email);
+    if (accessRule && accessRule.permission === 'block') {
+        return res.status(403).send("<h1>Acesso Bloqueado</h1><p>Este acesso foi bloqueado manualmente. Entre em contato com o suporte.</p><a href='/'>Voltar</a>");
+    }
+
+    // 2. Verificação de Acesso Vitalício
+    if (accessRule && accessRule.permission === 'allow') {
+        req.session.loginAttempts = 0;
+        req.session.user = { email: customer.email, status: 'lifetime' };
+        return res.redirect('/welcome.html');
+    }
+
+    // 3. Verificação de Acesso Anual
+    if (customer.annual_expires_at && now < new Date(customer.annual_expires_at)) {
+        req.session.loginAttempts = 0;
+        req.session.user = { email: customer.email, status: 'annual_paid' };
+        return res.redirect('/welcome.html');
+    }
     
-    // MUDANÇA: Lógica do período de cortesia integrada
+    // 4. Verificação de Acesso Mensal
+    if (customer.monthly_status === 'paid') {
+        req.session.loginAttempts = 0;
+        req.session.user = { email: customer.email, status: 'monthly_paid' };
+        return res.redirect('/welcome.html');
+    }
+    
+    // 5. Verificação do Período de Cortesia
     const enableGracePeriod = process.env.ENABLE_GRACE_PERIOD === 'true';
     const graceSermonsLimit = parseInt(process.env.GRACE_PERIOD_SERMONS, 10) || 2;
     
-    // Prioriza o acesso pago
-    if (customer.status === 'paid') {
-        if (customer.expires_at && now > new Date(customer.expires_at)) {
-             // Se expirou, verifica cortesia
-        } else {
-            req.session.loginAttempts = 0;
-            req.session.user = { email: customer.email, status: 'paid' };
-            return res.redirect('/welcome.html');
-        }
-    }
-    
-    // Se não for 'paid' ou se expirou, verifica a cortesia
     if (enableGracePeriod) {
         const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         let currentGraceSermonsUsed = customer.grace_sermons_used || 0;
 
         if (customer.grace_period_month !== currentMonth) {
-            await updateGraceSermons(customer.email, 0, currentMonth);
+            await updateGraceSermons(customer.email, 0, currentMonth); // Zera se o mês mudou
             currentGraceSermonsUsed = 0;
         }
 
@@ -103,8 +131,8 @@ const checkAccessAndLogin = async (req, res, customer) => {
         }
     }
     
-    // Se não tem acesso pago nem cortesia, mostra a mensagem de vencimento
-    const overdueErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Acesso Negado</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu, clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
+    // 6. Acesso Negado (Nenhuma regra satisfeita)
+    const overdueErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pagamento Pendente</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu, clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
     return res.status(401).send(overdueErrorMessageHTML);
 };
 
@@ -121,16 +149,6 @@ app.post("/login", loginLimiter, async (req, res) => {
     }
 
     try {
-        const manualPermission = await getManualPermission(lowerCaseEmail);
-        if (manualPermission && manualPermission.permission === 'block') {
-            return res.status(403).send("<h1>Acesso Bloqueado</h1><p>Este acesso foi bloqueado manualmente. Entre em contato com o suporte.</p><a href='/'>Voltar</a>");
-        }
-        if (manualPermission && manualPermission.permission === 'allow') {
-            req.session.loginAttempts = 0;
-            req.session.user = { email: lowerCaseEmail, status: 'allowed_manual' };
-            return res.redirect('/welcome.html');
-        }
-
         const customer = await getCustomerRecordByEmail(lowerCaseEmail);
 
         if (customer) {
@@ -162,15 +180,6 @@ app.post("/login-by-phone", loginLimiter, async (req, res) => {
         const customer = await getCustomerRecordByPhone(phone);
         
         if (customer) {
-            const manualPermission = await getManualPermission(customer.email);
-            if (manualPermission && manualPermission.permission === 'block') {
-                return res.status(403).send("<h1>Acesso Bloqueado</h1><p>Este acesso foi bloqueado manualmente. Entre em contato com o suporte.</p><a href='/'>Voltar</a>");
-            }
-            if (manualPermission && manualPermission.permission === 'allow') {
-                req.session.loginAttempts = 0;
-                req.session.user = { email: customer.email, status: 'allowed_manual' };
-                return res.redirect('/welcome.html');
-            }
             return await checkAccessAndLogin(req, res, customer);
         } else {
             const notFoundErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Erro de Login</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Celular não localizado</h1><p>Não encontramos um cadastro com este número de celular. Por favor, verifique se o número está correto ou tente acessar com seu e-mail.</p><a href="/" class="back-link">Tentar com e-mail</a></div></body></html>`;
@@ -182,68 +191,92 @@ app.post("/login-by-phone", loginLimiter, async (req, res) => {
     }
 });
 
+// NOVA LÓGICA: Webhook reescrito para identificar tipo de produto e atualizar dados específicos.
 app.post("/eduzz/webhook", async (req, res) => {
-  const { api_key, product_cod, cus_email, cus_name, cus_cel, event_name } = req.body;
+    const { api_key, product_cod, cus_email, cus_name, cus_cel, event_name, trans_cod, trans_paiddate, trans_paidtime } = req.body;
   
-  if (api_key !== process.env.EDUZZ_API_KEY) {
-    console.warn(`[Webhook-Segurança] API Key inválida recebida.`);
-    return res.status(403).send("API Key inválida.");
-  }
-  
-  const enableGracePeriod = process.env.ENABLE_GRACE_PERIOD === 'true';
-  const validProductIds = (process.env.EDUZZ_PRODUCT_IDS || "").split(',').map(id => id.trim());
-  const isAccessProduct = validProductIds.includes(product_cod.toString());
-
-  if (!isAccessProduct && enableGracePeriod) {
-      const status = 'prospect';
-      try {
-          await markStatus(cus_email, cus_name, cus_cel, status);
-          console.log(`[Webhook-Info] Cliente [${cus_email}] registrado como 'prospect' a partir do produto [${product_cod}].`);
-          return res.status(200).send("Prospect registrado.");
-      } catch (error) {
-          console.error(`[Webhook-Erro] Falha ao registrar prospect [${cus_email}].`, error);
-          return res.status(500).send("Erro interno ao registrar prospect.");
-      }
-  } else if (!isAccessProduct) {
-      console.log(`[Webhook-Info] Ignorando webhook para produto não relacionado e cortesia desativada: ${product_cod}`);
-      return res.status(200).send("Webhook ignorado.");
-  }
-
-  let status;
-  switch (event_name) {
-    case 'invoice_paid':
-    case 'contract_up_to_date':
-      status = 'paid';
-      break;
-    case 'contract_delayed':
-      status = 'overdue';
-      break;
-    case 'contract_canceled':
-    case 'invoice_refunded':
-    case 'invoice_expired':
-      status = 'canceled';
-      break;
-    default:
-      console.log(`[Webhook-Info] Ignorando evento não mapeado para produto de acesso: ${event_name}`);
-      return res.status(200).send("Evento não mapeado.");
-  }
-
-  if (cus_email && status) {
-    try {
-      await markStatus(cus_email, cus_name, cus_cel, status);
-      console.log(`[Webhook-Sucesso] Cliente [${cus_email}] atualizado para o status [${status}].`);
-      res.status(200).send("Webhook processado com sucesso.");
-    } catch (error) {
-      console.error(`[Webhook-Erro] Falha ao atualizar o cliente [${cus_email}] no banco de dados.`, error);
-      res.status(500).send("Erro interno ao processar o webhook.");
+    if (api_key !== process.env.EDUZZ_API_KEY) {
+        console.warn(`[Webhook-Segurança] API Key inválida recebida.`);
+        return res.status(403).send("API Key inválida.");
     }
-  } else {
-    console.warn("[Webhook-Aviso] Webhook recebido sem e-mail do cliente ou status válido.");
-    res.status(400).send("Dados insuficientes no webhook.");
-  }
+
+    if (!cus_email || !product_cod || !event_name || !trans_cod) {
+        console.warn("[Webhook-Aviso] Webhook recebido com dados essenciais faltando.", { email: cus_email, prod: product_cod, event: event_name, invoice: trans_cod });
+        return res.status(400).send("Dados insuficientes no webhook.");
+    }
+
+    // Carrega IDs dos produtos das variáveis de ambiente
+    const lifetime_ids = (process.env.EDUZZ_LIFETIME_PRODUCT_IDS || "").split(',');
+    const annual_ids = (process.env.EDUZZ_ANNUAL_PRODUCT_IDS || "").split(',');
+    const monthly_ids = (process.env.EDUZZ_MONTHLY_PRODUCT_IDS || "").split(',');
+    const productCodStr = product_cod.toString();
+
+    let productType = null;
+    if (lifetime_ids.includes(productCodStr)) productType = 'lifetime';
+    else if (annual_ids.includes(productCodStr)) productType = 'annual';
+    else if (monthly_ids.includes(productCodStr)) productType = 'monthly';
+
+    try {
+        // Lógica para registrar prospects e habilitar cortesia
+        if (!productType) {
+            const enableGracePeriod = process.env.ENABLE_GRACE_PERIOD === 'true';
+            if (enableGracePeriod) {
+                await registerProspect(cus_email, cus_name, cus_cel);
+                console.log(`[Webhook-Info] Cliente [${cus_email}] registrado como 'prospect' (elegível para cortesia) a partir do produto [${product_cod}].`);
+                return res.status(200).send("Prospect registrado.");
+            } else {
+                console.log(`[Webhook-Info] Ignorando webhook para produto não mapeado [${product_cod}] e cortesia desativada.`);
+                return res.status(200).send("Webhook ignorado (produto não mapeado).");
+            }
+        }
+        
+        // Processamento de pagamentos
+        if (event_name === 'invoice_paid') {
+            switch (productType) {
+                case 'lifetime':
+                    await updateLifetimeAccess(cus_email, cus_name, cus_cel, trans_cod, product_cod);
+                    console.log(`[Webhook-Sucesso] Acesso VITALÍCIO concedido para [${cus_email}] via fatura [${trans_cod}].`);
+                    break;
+                case 'annual':
+                    const paidAt = `${trans_paiddate} ${trans_paidtime}`;
+                    await updateAnnualAccess(cus_email, cus_name, cus_cel, trans_cod, paidAt);
+                    console.log(`[Webhook-Sucesso] Acesso ANUAL concedido/renovado para [${cus_email}] via fatura [${trans_cod}].`);
+                    break;
+                case 'monthly':
+                    await updateMonthlyStatus(cus_email, cus_name, cus_cel, trans_cod, 'paid');
+                    console.log(`[Webhook-Sucesso] Acesso MENSAL atualizado para 'paid' para [${cus_email}] via fatura [${trans_cod}].`);
+                    break;
+            }
+        } 
+        // Processamento de status de contrato (para mensal)
+        else if (productType === 'monthly' && event_name === 'contract_up_to_date') {
+             await updateMonthlyStatus(cus_email, cus_name, cus_cel, trans_cod, 'paid');
+             console.log(`[Webhook-Sucesso] Status MENSAL de [${cus_email}] atualizado para 'paid' (contrato em dia).`);
+        }
+        else if (productType === 'monthly' && event_name === 'contract_delayed') {
+             await updateMonthlyStatus(cus_email, cus_name, cus_cel, trans_cod, 'overdue');
+             console.log(`[Webhook-Sucesso] Status MENSAL de [${cus_email}] atualizado para 'overdue' (contrato atrasado).`);
+        }
+        // Processamento de cancelamentos e estornos
+        else if (['contract_canceled', 'invoice_refunded', 'invoice_expired'].includes(event_name)) {
+            await revokeAccessByInvoice(trans_cod, productType);
+            console.log(`[Webhook-Sucesso] Acesso da fatura [${trans_cod}] (${productType}) foi REVOGADO para o cliente [${cus_email}] devido ao evento [${event_name}].`);
+        }
+        // Ignora outros eventos
+        else {
+            console.log(`[Webhook-Info] Ignorando evento não mapeado para produto de acesso: ${event_name} (Produto: ${product_cod})`);
+            return res.status(200).send("Evento não mapeado.");
+        }
+
+        res.status(200).send("Webhook processado com sucesso.");
+
+    } catch (error) {
+        console.error(`[Webhook-Erro] Falha ao processar webhook para [${cus_email}], evento [${event_name}], produto [${product_cod}].`, error);
+        res.status(500).send("Erro interno ao processar o webhook.");
+    }
 });
 
-// A SEÇÃO DE ADMINISTRAÇÃO COMPLETA
+
 const getAdminPanelHeader = (key, activePage) => {
     return `
         <style>
@@ -257,7 +290,7 @@ const getAdminPanelHeader = (key, activePage) => {
         <h1>Painel de Administração</h1>
         <div class="nav-container">
             <div class="nav-links">
-                <a href="/admin/view-data?key=${key}" ${activePage === 'data' ? 'class="active"' : ''}>Clientes da Eduzz</a>
+                <a href="/admin/view-data?key=${key}" ${activePage === 'data' ? 'class="active"' : ''}>Clientes</a>
                 <a href="/admin/view-access-control?key=${key}" ${activePage === 'access' ? 'class="active"' : ''}>Acesso Manual (Vitalícios)</a>
                 <a href="/admin/view-activity?key=${key}" ${activePage === 'activity' ? 'class="active"' : ''}>Log de Atividades</a>
             </div>
@@ -272,19 +305,39 @@ const getAdminPanelHeader = (key, activePage) => {
     `;
 };
 
+// NOVA LÓGICA: Admin Panel atualizado para exibir as novas colunas de acesso.
 app.get("/admin/view-data", async (req, res) => {
     const { key } = req.query;
     if (key !== process.env.ADMIN_KEY) { return res.status(403).send("<h1>Acesso Negado</h1>"); }
     try {
-        const { rows } = await pool.query('SELECT email, name, phone, status, updated_at, expires_at, grace_sermons_used, grace_period_month FROM customers ORDER BY updated_at DESC');
+        const { rows } = await pool.query(`
+            SELECT email, name, phone, 
+                   monthly_status, last_monthly_invoice_id,
+                   annual_expires_at, last_annual_invoice_id,
+                   grace_sermons_used, grace_period_month, updated_at 
+            FROM customers ORDER BY updated_at DESC
+        `);
         let html = getAdminPanelHeader(key, 'data');
         html += `<h2>Clientes (${rows.length} registros)</h2>
-            <table><tr><th>Email</th><th>Nome</th><th>Telefone</th><th>Status</th><th>Última Atualização</th><th>Expira em</th><th>Cortesia Usada</th><th>Mês da Cortesia</th><th>Ações</th></tr>`;
+            <table><tr>
+                <th>Email</th><th>Nome</th><th>Telefone</th>
+                <th>Status Mensal</th><th>Última Fatura Mensal</th>
+                <th>Expira em (Anual)</th><th>Última Fatura Anual</th>
+                <th>Cortesia Usada</th><th>Mês Cortesia</th>
+                <th>Última Atualização</th><th>Ações</th>
+            </tr>`;
 
         rows.forEach(customer => {
             const dataAtualizacao = customer.updated_at ? new Date(customer.updated_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'N/A';
-            const dataExpiracao = customer.expires_at ? new Date(customer.expires_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'N/A';
-            html += `<tr><td>${customer.email}</td><td>${customer.name || ''}</td><td>${customer.phone || ''}</td><td>${customer.status}</td><td>${dataAtualizacao}</td><td>${dataExpiracao}</td><td>${customer.grace_sermons_used || 0}</td><td>${customer.grace_period_month || 'N/A'}</td><td class="actions"><a href="/admin/edit-customer?email=${encodeURIComponent(customer.email)}&key=${key}">[Editar]</a></td></tr>`;
+            const dataExpiracaoAnual = customer.annual_expires_at ? new Date(customer.annual_expires_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'N/A';
+            html += `<tr>
+                <td>${customer.email}</td><td>${customer.name || ''}</td><td>${customer.phone || ''}</td>
+                <td>${customer.monthly_status || 'N/A'}</td><td>${customer.last_monthly_invoice_id || 'N/A'}</td>
+                <td>${dataExpiracaoAnual}</td><td>${customer.last_annual_invoice_id || 'N/A'}</td>
+                <td>${customer.grace_sermons_used || 0}</td><td>${customer.grace_period_month || 'N/A'}</td>
+                <td>${dataAtualizacao}</td>
+                <td class="actions"><a href="/admin/edit-customer?email=${encodeURIComponent(customer.email)}&key=${key}">[Editar]</a></td>
+            </tr>`;
         });
         html += '</table>';
         res.send(html);
@@ -294,6 +347,7 @@ app.get("/admin/view-data", async (req, res) => {
     }
 });
 
+// NOVA LÓGICA: Formulário de edição atualizado para os novos campos.
 app.get("/admin/edit-customer", async (req, res) => {
     const { key, email } = req.query;
     if (key !== process.env.ADMIN_KEY) { return res.status(403).send("Acesso Negado"); }
@@ -303,39 +357,49 @@ app.get("/admin/edit-customer", async (req, res) => {
         const customer = await getCustomerRecordByEmail(email);
         if (!customer) { return res.status(404).send("Cliente não encontrado."); }
 
-        const expires_at_value = customer.expires_at 
-            ? new Date(new Date(customer.expires_at).getTime() - (3 * 60 * 60 * 1000)).toISOString().slice(0, 16)
+        const annual_expires_at_value = customer.annual_expires_at 
+            ? new Date(new Date(customer.annual_expires_at).getTime() - (3 * 60 * 60 * 1000)).toISOString().slice(0, 16)
             : "";
 
         res.send(`
             <style>
                 body { font-family: sans-serif; max-width: 600px; margin: 40px auto; }
                 form div { margin-bottom: 15px; }
-                label { display: block; margin-bottom: 5px; }
-                input, select { width: 100%; padding: 8px; font-size: 1em; }
+                label { display: block; margin-bottom: 5px; font-weight: bold; }
+                input, select { width: 100%; padding: 8px; font-size: 1em; box-sizing: border-box; }
                 button { padding: 10px 15px; font-size: 1em; cursor: pointer; }
+                .field-group { border: 1px solid #ccc; padding: 15px; border-radius: 5px; margin-top: 20px; }
             </style>
             <h1>Editar Cliente: ${customer.email}</h1>
             <form action="/admin/update-customer" method="POST">
                 <input type="hidden" name="key" value="${key}">
                 <input type="hidden" name="email" value="${customer.email}">
 
-                <div><label for="name">Nome:</label><input type="text" id="name" name="name" value="${customer.name || ''}"></div>
-                <div><label for="phone">Telefone:</label><input type="text" id="phone" name="phone" value="${customer.phone || ''}"></div>
-                
-                <div><label for="status">Status:</label>
-                    <select id="status" name="status">
-                        <option value="paid" ${customer.status === 'paid' ? 'selected' : ''}>paid</option>
-                        <option value="overdue" ${customer.status === 'overdue' ? 'selected' : ''}>overdue</option>
-                        <option value="canceled" ${customer.status === 'canceled' ? 'selected' : ''}>canceled</option>
-                        <option value="prospect" ${customer.status === 'prospect' ? 'selected' : ''}>prospect</option>
-                    </select>
+                <div class="field-group">
+                    <h3>Dados Gerais</h3>
+                    <div><label for="name">Nome:</label><input type="text" id="name" name="name" value="${customer.name || ''}"></div>
+                    <div><label for="phone">Telefone:</label><input type="text" id="phone" name="phone" value="${customer.phone || ''}"></div>
                 </div>
 
-                <div><label for="expires_at">Data de Expiração (deixe em branco para controle da Eduzz):</label>
-                <input type="datetime-local" id="expires_at" name="expires_at" value="${expires_at_value}"></div>
+                <div class="field-group">
+                    <h3>Acesso Mensal</h3>
+                    <div><label for="monthly_status">Status Mensal:</label>
+                        <select id="monthly_status" name="monthly_status">
+                            <option value="" ${!customer.monthly_status ? 'selected' : ''}>Nenhum</option>
+                            <option value="paid" ${customer.monthly_status === 'paid' ? 'selected' : ''}>paid</option>
+                            <option value="overdue" ${customer.monthly_status === 'overdue' ? 'selected' : ''}>overdue</option>
+                            <option value="canceled" ${customer.monthly_status === 'canceled' ? 'selected' : ''}>canceled</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="field-group">
+                    <h3>Acesso Anual</h3>
+                    <div><label for="annual_expires_at">Data de Expiração (Anual):</label>
+                    <input type="datetime-local" id="annual_expires_at" name="annual_expires_at" value="${annual_expires_at_value}"></div>
+                </div>
                 
-                <button type="submit">Salvar Alterações</button>
+                <button type="submit" style="margin-top: 20px;">Salvar Alterações</button>
             </form>
             <br>
             <a href="/admin/view-data?key=${key}">Voltar para a lista</a>
@@ -346,19 +410,21 @@ app.get("/admin/edit-customer", async (req, res) => {
     }
 });
 
+// NOVA LÓGICA: Atualização do cliente para persistir os novos campos.
 app.post("/admin/update-customer", async (req, res) => {
-    const { key, email, name, phone, status, expires_at } = req.body;
+    const { key, email, name, phone, monthly_status, annual_expires_at } = req.body;
     if (key !== process.env.ADMIN_KEY) { return res.status(403).send("Acesso Negado"); }
     
     try {
-        const expirationDate = expires_at ? new Date(expires_at).toISOString() : null;
+        const expirationDate = annual_expires_at ? new Date(annual_expires_at).toISOString() : null;
+        const finalMonthlyStatus = monthly_status || null; // Salva null se a opção "Nenhum" for escolhida
 
         const query = `
             UPDATE customers 
-            SET name = $1, phone = $2, status = $3, expires_at = $4, updated_at = NOW() 
+            SET name = $1, phone = $2, monthly_status = $3, annual_expires_at = $4, updated_at = NOW() 
             WHERE email = $5
         `;
-        await pool.query(query, [name, phone, status, expirationDate, email]);
+        await pool.query(query, [name, phone, finalMonthlyStatus, expirationDate, email]);
         res.redirect(`/admin/view-data?key=${key}`);
     } catch (error) {
         console.error("Erro ao atualizar cliente:", error);
@@ -366,18 +432,25 @@ app.post("/admin/update-customer", async (req, res) => {
     }
 });
 
+
+// NOVA LÓGICA: Admin Panel de Acesso Manual atualizado para as novas colunas.
 app.get("/admin/view-access-control", async (req, res) => {
     const { key } = req.query;
     if (key !== process.env.ADMIN_KEY) { return res.status(403).send("<h1>Acesso Negado</h1>"); }
     try {
-        const { rows } = await pool.query('SELECT email, permission, reason, created_at FROM access_control ORDER BY created_at DESC');
+        const { rows } = await pool.query('SELECT email, permission, reason, product_id, invoice_id, created_at FROM access_control ORDER BY created_at DESC');
         let html = getAdminPanelHeader(key, 'access');
         html += `<h2>Acesso Manual (Vitalícios) (${rows.length} registros)</h2>
-            <table><tr><th>Email</th><th>Permissão</th><th>Motivo</th><th>Criado em (Brasília)</th></tr>`;
+            <table><tr><th>Email</th><th>Permissão</th><th>Motivo</th><th>ID Produto</th><th>ID Fatura</th><th>Criado em (Brasília)</th></tr>`;
 
         rows.forEach(rule => {
             const dataCriacao = rule.created_at ? new Date(rule.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'N/A';
-            html += `<tr><td>${rule.email}</td><td>${rule.permission}</td><td>${rule.reason || 'Não informado'}</td><td>${dataCriacao}</td></tr>`;
+            html += `<tr>
+                <td>${rule.email}</td><td>${rule.permission}</td>
+                <td>${rule.reason || 'Não informado'}</td>
+                <td>${rule.product_id || 'N/A'}</td><td>${rule.invoice_id || 'N/A'}</td>
+                <td>${dataCriacao}</td>
+            </tr>`;
         });
         html += '</table>';
         res.send(html);
@@ -408,6 +481,8 @@ app.get("/admin/view-activity", async (req, res) => {
     }
 });
 
+
+// NOVA LÓGICA: Importação de CSV reescrita para preencher as novas colunas do banco de dados.
 app.get("/admin/import-from-csv", async (req, res) => {
     const { key, plan_type } = req.query;
     if (key !== process.env.ADMIN_KEY) {
@@ -424,94 +499,97 @@ app.get("/admin/import-from-csv", async (req, res) => {
 
     const clientsToImport = [];
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.write(`<h1>Iniciando importação para plano: ${plan_type}...</h1>`);
+    res.write(`<h1>Iniciando importação para plano: ${plan_type.toUpperCase()}...</h1>`);
+    res.write("<p><strong>Atenção:</strong> O arquivo CSV deve usar ponto e vírgula (;) como separador.</p>");
 
     fs.createReadStream(CSV_FILE_PATH)
       .pipe(csv({ separator: ';' }))
       .on('data', (row) => {
         const email = row['Cliente / E-mail'];
-        const name = row['Cliente / Nome'] || row['Cliente / Razão-Social'];
-        const phone = row['Cliente / Fones'];
-        const purchaseDateStr = row['Data de Criação'] || row['Início em'];
-        const statusCsv = row['Status'];
-
-        if (plan_type === 'mensal') {
-            if (email) {
-                clientsToImport.push({ email, name, phone, purchaseDateStr, statusCsv });
-            }
-        } else {
-             if (email && purchaseDateStr && statusCsv && statusCsv.toLowerCase() === 'paga') {
-                clientsToImport.push({ email, name, phone, purchaseDateStr, statusCsv });
-            }
+        if (email) {
+            clientsToImport.push(row);
         }
       })
       .on('end', async () => {
-        res.write(`<p>Leitura do CSV concluída. ${clientsToImport.length} clientes encontrados para processar.</p>`);
+        res.write(`<p>Leitura do CSV concluída. ${clientsToImport.length} linhas com e-mail encontradas para processar.</p><hr>`);
         if (clientsToImport.length === 0) return res.end('<p>Nenhum cliente para importar. Encerrando.</p>');
 
         const client = await pool.connect();
         try {
-            res.write('<p>Iniciando transação com o banco de dados...</p>');
+            res.write('<p>Iniciando transação com o banco de dados...</p><ul>');
             await client.query('BEGIN');
 
-            for (const [index, customerData] of clientsToImport.entries()) {
-                let query;
-                let queryParams;
+            for (const customerData of clientsToImport) {
+                const email = customerData['Cliente / E-mail']?.toLowerCase();
+                const name = customerData['Cliente / Nome'] || customerData['Cliente / Razão-Social'];
+                const phone = customerData['Cliente / Fones'];
 
                 if (plan_type === 'anual') {
-                    const [datePart, timePart] = customerData.purchaseDateStr.split(' ');
-                    const [day, month, year] = datePart.split('/');
-                    const purchaseDate = new Date(`${year}-${month}-${day}T${timePart || '00:00:00'}`);
-                    const expirationDate = new Date(purchaseDate);
-                    expirationDate.setDate(expirationDate.getDate() + 365);
-                    
-                    query = `
-                        INSERT INTO customers (email, name, phone, status, expires_at, updated_at)
-                        VALUES ($1, $2, $3, 'paid', $4, NOW())
-                        ON CONFLICT (email) DO UPDATE SET 
-                            name = COALESCE($2, customers.name),
-                            phone = COALESCE($3, customers.phone),
-                            expires_at = EXCLUDED.expires_at,
-                            updated_at = NOW();`;
-                    queryParams = [customerData.email.toLowerCase(), customerData.name, customerData.phone, expirationDate.toISOString()];
-                } else if (plan_type === 'vitalicio') {
-                    query = `
-                        INSERT INTO access_control (email, permission, reason)
-                        VALUES ($1, 'allow', 'Importado via CSV - Vitalício')
-                        ON CONFLICT (email) DO NOTHING;`;
-                    queryParams = [customerData.email.toLowerCase()];
-                } else if (plan_type === 'mensal') {
-                    let status;
-                    if (customerData.statusCsv.toLowerCase() === 'em dia') {
-                        status = 'paid';
-                    } else if (customerData.statusCsv.toLowerCase() === 'atrasado') {
-                        status = 'overdue';
-                    } else {
-                        status = 'canceled';
-                    }
-                    query = `
-                        INSERT INTO customers (email, name, phone, status, expires_at, updated_at)
-                        VALUES ($1, $2, $3, $4, NULL, NOW())
-                        ON CONFLICT (email) DO UPDATE SET
-                            name = COALESCE($2, customers.name),
-                            phone = COALESCE($3, customers.phone),
-                            status = EXCLUDED.status,
-                            expires_at = NULL,
-                            updated_at = NOW();`;
-                    queryParams = [customerData.email.toLowerCase(), customerData.name, customerData.phone, status];
-                }
+                    const expirationDateStr = customerData['Próx. Vencimento'];
+                    if (!expirationDateStr) continue;
 
-                if (query) {
-                    await client.query(query, queryParams);
+                    const [day, month, year] = expirationDateStr.split(' ')[0].split('/');
+                    const expirationDate = new Date(`${year}-${month}-${day}T23:59:59-03:00`);
+                    
+                    await client.query(
+                        `INSERT INTO customers (email, name, phone, annual_expires_at, updated_at)
+                         VALUES ($1, $2, $3, $4, NOW())
+                         ON CONFLICT (email) DO UPDATE SET 
+                            name = COALESCE(EXCLUDED.name, customers.name),
+                            phone = COALESCE(EXCLUDED.phone, customers.phone),
+                            annual_expires_at = EXCLUDED.annual_expires_at,
+                            updated_at = NOW()`,
+                        [email, name, phone, expirationDate.toISOString()]
+                    );
+                    res.write(`<li>ANUAL: Cliente ${email} atualizado com expiração em ${expirationDate.toLocaleDateString('pt-BR')}.</li>`);
+                
+                } else if (plan_type === 'vitalicio') {
+                    const invoiceId = customerData['Fatura'];
+                    const productId = customerData['ID do Produto'];
+                    if (!invoiceId) continue;
+
+                    await client.query(
+                        `INSERT INTO access_control (email, permission, reason, product_id, invoice_id)
+                         VALUES ($1, 'allow', 'Importado via CSV - Vitalício', $2, $3)
+                         ON CONFLICT (email) DO NOTHING`,
+                        [email, productId, invoiceId]
+                    );
+                    await client.query( // Garante que o cliente exista na tabela customers também
+                        `INSERT INTO customers (email, name, phone) VALUES ($1, $2, $3) ON CONFLICT (email) DO NOTHING`,
+                        [email, name, phone]
+                    );
+                    res.write(`<li>VITALÍCIO: Cliente ${email} (Fatura: ${invoiceId}) adicionado à lista de acesso manual.</li>`);
+
+                } else if (plan_type === 'mensal') {
+                    const statusCsv = customerData['Status']?.toLowerCase();
+                    if (!statusCsv) continue;
+
+                    let status;
+                    if (statusCsv.includes('paga') || statusCsv.includes('em dia')) status = 'paid';
+                    else if (statusCsv.includes('atrasado') || statusCsv.includes('vencida')) status = 'overdue';
+                    else if (statusCsv.includes('cancelada')) status = 'canceled';
+                    else continue;
+
+                    await client.query(
+                        `INSERT INTO customers (email, name, phone, monthly_status, updated_at)
+                         VALUES ($1, $2, $3, $4, NOW())
+                         ON CONFLICT (email) DO UPDATE SET
+                            name = COALESCE(EXCLUDED.name, customers.name),
+                            phone = COALESCE(EXCLUDED.phone, customers.phone),
+                            monthly_status = EXCLUDED.monthly_status,
+                            updated_at = NOW()`,
+                        [email, name, phone, status]
+                    );
+                    res.write(`<li>MENSAL: Cliente ${email} atualizado com status '${status}'.</li>`);
                 }
             }
 
             await client.query('COMMIT');
-            res.end(`<h2>✅ Sucesso!</h2><p>${clientsToImport.length} clientes foram importados/atualizados para o plano ${plan_type}.</p>`);
+            res.end(`</ul><hr><h2>✅ Sucesso!</h2><p>A importação para o plano ${plan_type.toUpperCase()} foi concluída.</p>`);
         } catch (e) {
             await client.query('ROLLBACK');
-            res.end(`<h2>❌ ERRO!</h2><p>Ocorreu um problema durante a importação. Nenhuma alteração foi salva. Verifique os logs do servidor.</p>`);
-            console.error(e);
+            res.end(`</ul><h2>❌ ERRO!</h2><p>Ocorreu um problema durante a importação. Nenhuma alteração foi salva (ROLLBACK). Verifique os logs do servidor.</p><pre>${e.stack}</pre>`);
+            console.error("ERRO DE IMPORTAÇÃO CSV:", e);
         } finally {
             client.release();
         }
@@ -519,6 +597,8 @@ app.get("/admin/import-from-csv", async (req, res) => {
 });
 
 // --- 4. ROTAS PROTEGIDAS (Apenas para usuários logados) ---
+
+// NOVA LÓGICA: Rota /app reescrita para usar a nova hierarquia de verificação de acesso.
 app.get("/app", requireLogin, async (req, res) => {
     try {
         const customer = await getCustomerRecordByEmail(req.session.user.email);
@@ -527,34 +607,44 @@ app.get("/app", requireLogin, async (req, res) => {
         }
 
         const now = new Date();
-        const enableGracePeriod = process.env.ENABLE_GRACE_PERIOD === 'true';
-        const graceSermonsLimit = parseInt(process.env.GRACE_PERIOD_SERMONS, 10) || 2;
-        
         let hasAccess = false;
-        const manualPermission = await getManualPermission(req.session.user.email);
 
-        if (manualPermission && manualPermission.permission === 'allow') {
+        // 1. Verificação de Bloqueio Manual
+        const accessRule = await getAccessControlRule(customer.email);
+        if (accessRule && accessRule.permission === 'block') {
+            hasAccess = false;
+        }
+        // 2. Verificação de Acesso Vitalício
+        else if (accessRule && accessRule.permission === 'allow') {
             hasAccess = true;
-        } else if (customer.status === 'paid') {
-            if (customer.expires_at) {
-                if (now < new Date(customer.expires_at)) {
+        } 
+        // 3. Verificação de Acesso Anual
+        else if (customer.annual_expires_at && now < new Date(customer.annual_expires_at)) {
+            hasAccess = true;
+        } 
+        // 4. Verificação de Acesso Mensal
+        else if (customer.monthly_status === 'paid') {
+            hasAccess = true;
+        } 
+        // 5. Verificação do Período de Cortesia
+        else {
+            const enableGracePeriod = process.env.ENABLE_GRACE_PERIOD === 'true';
+            const graceSermonsLimit = parseInt(process.env.GRACE_PERIOD_SERMONS, 10) || 2;
+            
+            if (enableGracePeriod) {
+                const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                let currentGraceSermonsUsed = customer.grace_sermons_used || 0;
+                
+                if(customer.grace_period_month !== currentMonth){
+                    await updateGraceSermons(customer.email, 0, currentMonth);
+                    currentGraceSermonsUsed = 0;
+                }
+                if (currentGraceSermonsUsed < graceSermonsLimit) {
                     hasAccess = true;
                 }
-            } else {
-                hasAccess = true;
-            }
-        } else if (enableGracePeriod) {
-            const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-            let currentGraceSermonsUsed = customer.grace_sermons_used || 0;
-            if(customer.grace_period_month !== currentMonth){
-                await updateGraceSermons(customer.email, 0, currentMonth);
-                currentGraceSermonsUsed = 0;
-            }
-            if (currentGraceSermonsUsed < graceSermonsLimit) {
-                hasAccess = true;
             }
         }
-
+        
         if (hasAccess) {
             res.sendFile(path.join(__dirname, "public", "app.html"));
         } else {
@@ -649,21 +739,20 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
 
     try {
         const customer = await getCustomerRecordByEmail(req.session.user.email);
-
-        if (step === 4) { // Apenas na etapa final, antes de gerar o sermão
-            const enableGracePeriod = process.env.ENABLE_GRACE_PERIOD === 'true';
-
-            if (customer && customer.status !== 'paid' && customer.status !== 'allowed_manual' && enableGracePeriod) {
-                const now = new Date();
-                const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-                let sermonsUsed = customer.grace_sermons_used || 0;
-                
-                if(customer.grace_period_month !== currentMonth){
-                    sermonsUsed = 0; // Se o mês mudou, reseta a contagem
-                }
-                
-                await updateGraceSermons(customer.email, sermonsUsed + 1, currentMonth);
+        
+        // A lógica de contagem de sermões de cortesia é acionada aqui, antes da geração
+        if (step === 4 && req.session.user.status === 'grace_period') {
+            const now = new Date();
+            const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            let sermonsUsed = customer.grace_sermons_used || 0;
+            
+            // A reinicialização por mudança de mês é tratada no login, mas garantimos aqui também.
+            if(customer.grace_period_month !== currentMonth){
+                sermonsUsed = 0; 
             }
+            
+            await updateGraceSermons(customer.email, sermonsUsed + 1, currentMonth);
+            console.log(`[Cortesia] Sermão de cortesia Nº${sermonsUsed + 1} registrado para ${customer.email}.`);
         }
 
         if (step === 1) {
@@ -694,8 +783,7 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
             const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '').trim();
             const cleanAudience = audience.replace(/^[A-Z]\)\s*/, '').trim();
             
-            const promptInstruction = promptConfig.instruction || `Escreva um sermão de ${duration}.`;
-            const prompt = `Gere um sermão do tipo ${cleanSermonType} para um público de ${cleanAudience} sobre o tema "${topic}". ${promptInstruction} ${promptConfig.structure}`;
+            const prompt = `Gere um sermão do tipo ${cleanSermonType} para um público de ${cleanAudience} sobre o tema "${topic}". ${promptConfig.structure}`;
             
             const { model, temperature, max_tokens } = promptConfig;
             
@@ -746,101 +834,4 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
 // --- 5. INICIALIZAÇÃO DO SERVIDOR ---
 app.listen(port, () => {
     console.log(`🚀 Servidor rodando na porta ${port}`);
-});
-acredito que o código que está faltando no seu é este:
-
-
-const checkAccessAndLogin = async (req, res, customer) => {
-    const now = new Date();
-    
-    const enableGracePeriod = process.env.ENABLE_GRACE_PERIOD === 'true';
-    const graceSermonsLimit = parseInt(process.env.GRACE_PERIOD_SERMONS, 10) || 2;
-    
-    if (enableGracePeriod && customer.status !== 'paid') {
-        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        
-        let currentGraceSermonsUsed = customer.grace_sermons_used || 0;
-
-        if (customer.grace_period_month !== currentMonth) {
-            await updateGraceSermons(customer.email, 0, currentMonth);
-            currentGraceSermonsUsed = 0;
-        }
-
-        if (currentGraceSermonsUsed < graceSermonsLimit) {
-            req.session.loginAttempts = 0;
-            req.session.user = { email: customer.email, status: 'grace_period' };
-            return res.redirect('/welcome.html');
-        }
-    }
-
-    if (customer.expires_at && now > new Date(customer.expires_at)) {
-        const expiredErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Acesso Expirado</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu, clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
-        return res.status(401).send(expiredErrorMessageHTML);
-    }
-
-    if (customer.status === 'paid') {
-        req.session.loginAttempts = 0;
-        req.session.user = { email: customer.email, status: 'paid' };
-        return res.redirect('/welcome.html');
-    }
-    
-    const overdueErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pagamento Pendente</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu, clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
-    return res.status(401).send(overdueErrorMessageHTML);
-};
-
-app.get("/", (req, res) => {
-    if (req.session && req.session.user) {
-        return res.redirect('/app');
-    }
-    res.sendFile(path.join(__dirname, "public", "login.html")); 
-});
-
-app.get("/app", requireLogin, async (req, res) => {
-    try {
-        const customer = await getCustomerRecordByEmail(req.session.user.email);
-        if (!customer) {
-            return req.session.destroy(() => res.redirect('/'));
-        }
-
-        const now = new Date();
-        const enableGracePeriod = process.env.ENABLE_GRACE_PERIOD === 'true';
-        const graceSermonsLimit = parseInt(process.env.GRACE_PERIOD_SERMONS, 10) || 2;
-        
-        let hasAccess = false;
-        const manualPermission = await getManualPermission(req.session.user.email);
-
-        if (manualPermission === 'allow') {
-            hasAccess = true;
-        } else if (customer.status === 'paid') {
-            if (customer.expires_at) {
-                if (now < new Date(customer.expires_at)) {
-                    hasAccess = true;
-                }
-            } else {
-                hasAccess = true;
-            }
-        } else if (enableGracePeriod) {
-            const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-            let currentGraceSermonsUsed = customer.grace_sermons_used || 0;
-            if(customer.grace_period_month !== currentMonth){
-                await updateGraceSermons(customer.email, 0, currentMonth);
-                currentGraceSermonsUsed = 0;
-            }
-            if (currentGraceSermonsUsed < graceSermonsLimit) {
-                hasAccess = true;
-            }
-        }
-
-        if (hasAccess) {
-            res.sendFile(path.join(__dirname, "public", "app.html"));
-        } else {
-            const overdueErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pagamento Pendente</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu, clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
-            req.session.destroy(() => {
-                res.status(403).send(overdueErrorMessageHTML);
-            });
-        }
-    } catch (error) {
-        console.error("Erro na rota /app:", error);
-        res.status(500).send("Erro interno ao verificar acesso.");
-    }
 });
