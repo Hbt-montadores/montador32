@@ -1,4 +1,4 @@
-// server.js - Versão 6.8 (Correção da Importação Mensal e Íntegro)
+// server.js - Versão Final (com importação mensal)
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
