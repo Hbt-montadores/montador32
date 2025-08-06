@@ -1,20 +1,24 @@
 {
-  "name": "MONTADOR DE SERMÕES",
-  "short_name": "MONTADOR DE SERMÕES",
+  "name": "Montador de Sermões 3.2",
+  "short_name": "Sermões 3.2",
+  "description": "Seu assistente de IA para a preparação de sermões.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "background_color": "#E3F2FD",
   "theme_color": "#0D47A1",
+  "orientation": "portrait-primary",
   "icons": [
     {
       "src": "/images/logo-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "/images/logo-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ],
   "screenshots": [
@@ -22,13 +26,15 @@
       "src": "/images/screenshot-desktop.png",
       "type": "image/png",
       "sizes": "1280x720",
-      "form_factor": "wide"
+      "form_factor": "wide",
+      "label": "Geração de Sermões no Desktop"
     },
     {
       "src": "/images/screenshot-mobile.png",
       "type": "image/png",
       "sizes": "720x1280",
-      "form_factor": "narrow"
+      "form_factor": "narrow",
+      "label": "Geração de Sermões no Celular"
     }
   ]
 }
