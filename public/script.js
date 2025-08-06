@@ -1,11 +1,20 @@
-// --- LÓGICA DE INSTALAÇÃO DO APP (PWA) ---
+// --- LÓGICA DE ONBOARDING E PWA ---
+
+// 1. Verificação inicial: O usuário já passou pela tela de boas-vindas?
+// Isso garante que a tela de boas-vindas seja o primeiro passo obrigatório.
+if (!localStorage.getItem('welcomeScreenSeen') && window.location.pathname !== '/welcome.html') {
+    window.location.href = '/welcome.html';
+}
+
+// 2. Lógica do botão de instalação "Plano B" (o antigo "Atalho")
 let deferredPrompt; 
 const installButton = document.getElementById('install-button');
 
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;
-  if (installButton) {
+  // Só mostra o botão "Instalar" se o app não estiver rodando como PWA instalado
+  if (installButton && !window.matchMedia('(display-mode: standalone)').matches) {
     installButton.style.display = 'block';
   }
 });
@@ -21,9 +30,10 @@ if (installButton) {
     }
   });
 }
-// --- FIM DA LÓGICA DE INSTALAÇÃO ---
+// --- FIM DA LÓGICA DE ONBOARDING E PWA ---
 
-// MUDANÇA: Referências aos novos contêineres de botões
+// --- LÓGICA PRINCIPAL DO APLICATIVO ---
+
 const topActions = document.getElementById('top-right-actions');
 const bottomActions = document.getElementById('bottom-right-actions');
 
@@ -87,7 +97,6 @@ async function nextStep(response, step) {
   document.getElementById("options-container").style.display = "none";
   loadingScreen.style.display = "flex";
 
-  // Esconder os botões do cabeçalho quando o sermão está sendo gerado
   if (step === 4) {
       if(topActions) topActions.style.display = 'none';
       if(bottomActions) bottomActions.style.display = 'none';
@@ -125,7 +134,12 @@ async function nextStep(response, step) {
     if (data.question) {
       showOptions(data);
     } else if (data.sermon) {
-      showSermon(data.sermon);
+      // Modificação para mensagens de cortesia
+      if (data.sermon === "GRACE_PERIOD_ENDED") {
+          showGracePeriodEndScreen();
+      } else {
+          showSermon(data.sermon);
+      }
     } else {
       showErrorScreen(); 
     }
@@ -145,7 +159,6 @@ function showSermon(content) {
   document.getElementById("restart-button").style.display = "block";
   document.getElementById("print-button").style.display = "block";
   
-  // Garante que os botões do cabeçalho fiquem escondidos na tela do sermão
   if(topActions) topActions.style.display = 'none';
   if(bottomActions) bottomActions.style.display = 'none';
 }
@@ -158,10 +171,27 @@ function showErrorScreen() {
     document.getElementById("restart-button").style.display = "none";
     document.getElementById("print-button").style.display = "none";
     
-    // Mostra os botões do cabeçalho na tela de erro para o usuário poder sair
     if(topActions) topActions.style.display = 'flex';
     if(bottomActions) bottomActions.style.display = 'block';
     document.getElementById("error-container").style.display = "block";
+}
+
+// Nova função para mostrar a tela de fim de cortesia
+function showGracePeriodEndScreen() {
+    document.getElementById("form-container").style.display = "none";
+    document.getElementById("options-container").style.display = "none";
+    document.getElementById("loading-screen").style.display = "none";
+    
+    const graceEndContainer = document.getElementById("grace-period-end-container");
+    if (graceEndContainer) {
+        graceEndContainer.style.display = "block";
+    }
+    
+    // Esconde outros botões de ação
+    document.getElementById("restart-button").style.display = "none";
+    document.getElementById("print-button").style.display = "none";
+    if(topActions) topActions.style.display = 'flex';
+    if(bottomActions) bottomActions.style.display = 'block';
 }
 
 function resetApp() {
@@ -170,10 +200,13 @@ function resetApp() {
     document.getElementById("restart-button").style.display = "none";
     document.getElementById("print-button").style.display = "none";
     document.getElementById("error-container").style.display = "none";
+    const graceEndContainer = document.getElementById("grace-period-end-container");
+    if (graceEndContainer) {
+        graceEndContainer.style.display = "none";
+    }
     document.getElementById("topic").value = "";
     document.getElementById("form-container").style.display = "block";
     
-    // Mostra os botões do cabeçalho novamente ao resetar
     if(topActions) topActions.style.display = 'flex';
     if(bottomActions) bottomActions.style.display = 'block';
 }
