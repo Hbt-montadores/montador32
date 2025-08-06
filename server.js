@@ -1,4 +1,4 @@
-// server.js - Versão 7.3 (Fusão Final com Período de Cortesia Funcional)
+// server.js - Versão 7.4 (Fusão Final Completa com Cortesia e Admin)
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -75,9 +75,20 @@ const checkAccessAndLogin = async (req, res, customer) => {
     const enableGracePeriod = process.env.ENABLE_GRACE_PERIOD === 'true';
     const graceSermonsLimit = parseInt(process.env.GRACE_PERIOD_SERMONS, 10) || 2;
     
-    if (customer.status !== 'paid' && customer.status !== 'allowed_manual' && enableGracePeriod) {
+    // Prioriza o acesso pago
+    if (customer.status === 'paid') {
+        if (customer.expires_at && now > new Date(customer.expires_at)) {
+             // Se expirou, verifica cortesia
+        } else {
+            req.session.loginAttempts = 0;
+            req.session.user = { email: customer.email, status: 'paid' };
+            return res.redirect('/welcome.html');
+        }
+    }
+    
+    // Se não for 'paid' ou se expirou, verifica a cortesia
+    if (enableGracePeriod) {
         const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        
         let currentGraceSermonsUsed = customer.grace_sermons_used || 0;
 
         if (customer.grace_period_month !== currentMonth) {
@@ -91,20 +102,9 @@ const checkAccessAndLogin = async (req, res, customer) => {
             return res.redirect('/welcome.html');
         }
     }
-
-    // Lógica de acesso normal (pago, anual, etc.)
-    if (customer.expires_at && now > new Date(customer.expires_at)) {
-        const expiredErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Acesso Expirado</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu, clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
-        return res.status(401).send(expiredErrorMessageHTML);
-    }
-
-    if (customer.status === 'paid') {
-        req.session.loginAttempts = 0;
-        req.session.user = { email: customer.email, status: 'paid' };
-        return res.redirect('/welcome.html');
-    }
     
-    const overdueErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pagamento Pendente</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu, clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
+    // Se não tem acesso pago nem cortesia, mostra a mensagem de vencimento
+    const overdueErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Acesso Negado</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu, clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
     return res.status(401).send(overdueErrorMessageHTML);
 };
 
@@ -122,10 +122,10 @@ app.post("/login", loginLimiter, async (req, res) => {
 
     try {
         const manualPermission = await getManualPermission(lowerCaseEmail);
-        if (manualPermission === 'block') {
+        if (manualPermission && manualPermission.permission === 'block') {
             return res.status(403).send("<h1>Acesso Bloqueado</h1><p>Este acesso foi bloqueado manualmente. Entre em contato com o suporte.</p><a href='/'>Voltar</a>");
         }
-        if (manualPermission === 'allow') {
+        if (manualPermission && manualPermission.permission === 'allow') {
             req.session.loginAttempts = 0;
             req.session.user = { email: lowerCaseEmail, status: 'allowed_manual' };
             return res.redirect('/welcome.html');
@@ -163,10 +163,10 @@ app.post("/login-by-phone", loginLimiter, async (req, res) => {
         
         if (customer) {
             const manualPermission = await getManualPermission(customer.email);
-            if (manualPermission === 'block') {
+            if (manualPermission && manualPermission.permission === 'block') {
                 return res.status(403).send("<h1>Acesso Bloqueado</h1><p>Este acesso foi bloqueado manualmente. Entre em contato com o suporte.</p><a href='/'>Voltar</a>");
             }
-            if (manualPermission === 'allow') {
+            if (manualPermission && manualPermission.permission === 'allow') {
                 req.session.loginAttempts = 0;
                 req.session.user = { email: customer.email, status: 'allowed_manual' };
                 return res.redirect('/welcome.html');
@@ -243,6 +243,7 @@ app.post("/eduzz/webhook", async (req, res) => {
   }
 });
 
+// A SEÇÃO DE ADMINISTRAÇÃO COMPLETA
 const getAdminPanelHeader = (key, activePage) => {
     return `
         <style>
@@ -532,7 +533,7 @@ app.get("/app", requireLogin, async (req, res) => {
         let hasAccess = false;
         const manualPermission = await getManualPermission(req.session.user.email);
 
-        if (manualPermission === 'allow') {
+        if (manualPermission && manualPermission.permission === 'allow') {
             hasAccess = true;
         } else if (customer.status === 'paid') {
             if (customer.expires_at) {
@@ -745,4 +746,101 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
 // --- 5. INICIALIZAÇÃO DO SERVIDOR ---
 app.listen(port, () => {
     console.log(`🚀 Servidor rodando na porta ${port}`);
+});
+acredito que o código que está faltando no seu é este:
+
+
+const checkAccessAndLogin = async (req, res, customer) => {
+    const now = new Date();
+    
+    const enableGracePeriod = process.env.ENABLE_GRACE_PERIOD === 'true';
+    const graceSermonsLimit = parseInt(process.env.GRACE_PERIOD_SERMONS, 10) || 2;
+    
+    if (enableGracePeriod && customer.status !== 'paid') {
+        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        
+        let currentGraceSermonsUsed = customer.grace_sermons_used || 0;
+
+        if (customer.grace_period_month !== currentMonth) {
+            await updateGraceSermons(customer.email, 0, currentMonth);
+            currentGraceSermonsUsed = 0;
+        }
+
+        if (currentGraceSermonsUsed < graceSermonsLimit) {
+            req.session.loginAttempts = 0;
+            req.session.user = { email: customer.email, status: 'grace_period' };
+            return res.redirect('/welcome.html');
+        }
+    }
+
+    if (customer.expires_at && now > new Date(customer.expires_at)) {
+        const expiredErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Acesso Expirado</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu, clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
+        return res.status(401).send(expiredErrorMessageHTML);
+    }
+
+    if (customer.status === 'paid') {
+        req.session.loginAttempts = 0;
+        req.session.user = { email: customer.email, status: 'paid' };
+        return res.redirect('/welcome.html');
+    }
+    
+    const overdueErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pagamento Pendente</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu, clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
+    return res.status(401).send(overdueErrorMessageHTML);
+};
+
+app.get("/", (req, res) => {
+    if (req.session && req.session.user) {
+        return res.redirect('/app');
+    }
+    res.sendFile(path.join(__dirname, "public", "login.html")); 
+});
+
+app.get("/app", requireLogin, async (req, res) => {
+    try {
+        const customer = await getCustomerRecordByEmail(req.session.user.email);
+        if (!customer) {
+            return req.session.destroy(() => res.redirect('/'));
+        }
+
+        const now = new Date();
+        const enableGracePeriod = process.env.ENABLE_GRACE_PERIOD === 'true';
+        const graceSermonsLimit = parseInt(process.env.GRACE_PERIOD_SERMONS, 10) || 2;
+        
+        let hasAccess = false;
+        const manualPermission = await getManualPermission(req.session.user.email);
+
+        if (manualPermission === 'allow') {
+            hasAccess = true;
+        } else if (customer.status === 'paid') {
+            if (customer.expires_at) {
+                if (now < new Date(customer.expires_at)) {
+                    hasAccess = true;
+                }
+            } else {
+                hasAccess = true;
+            }
+        } else if (enableGracePeriod) {
+            const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            let currentGraceSermonsUsed = customer.grace_sermons_used || 0;
+            if(customer.grace_period_month !== currentMonth){
+                await updateGraceSermons(customer.email, 0, currentMonth);
+                currentGraceSermonsUsed = 0;
+            }
+            if (currentGraceSermonsUsed < graceSermonsLimit) {
+                hasAccess = true;
+            }
+        }
+
+        if (hasAccess) {
+            res.sendFile(path.join(__dirname, "public", "app.html"));
+        } else {
+            const overdueErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pagamento Pendente</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu, clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
+            req.session.destroy(() => {
+                res.status(403).send(overdueErrorMessageHTML);
+            });
+        }
+    } catch (error) {
+        console.error("Erro na rota /app:", error);
+        res.status(500).send("Erro interno ao verificar acesso.");
+    }
 });
