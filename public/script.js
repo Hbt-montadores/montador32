@@ -1,212 +1,200 @@
-// --- LÓGICA DE ONBOARDING E PWA ---
+// script.js - Versão Final (com tratamento de erro de cortesia)
 
-// 1. Verificação inicial: O usuário já passou pela tela de boas-vindas?
-// Isso garante que a tela de boas-vindas seja o primeiro passo obrigatório.
-if (!localStorage.getItem('welcomeScreenSeen') && window.location.pathname !== '/welcome.html') {
-    window.location.href = '/welcome.html';
+// 1. REGISTRO DO SERVICE WORKER (PARA FUNCIONALIDADE PWA)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js')
+      .then(registration => {
+        console.log('Service Worker registrado com sucesso:', registration);
+      })
+      .catch(error => {
+        console.error('Falha ao registrar Service Worker:', error);
+      });
+  });
 }
 
-// 2. Lógica do botão de instalação "Plano B" (o antigo "Atalho")
-let deferredPrompt; 
-const installButton = document.getElementById('install-button');
+// 2. ESTADO DA APLICAÇÃO
+let currentStep = 1;
 
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredPrompt = e;
-  // Só mostra o botão "Instalar" se o app não estiver rodando como PWA instalado
-  if (installButton && !window.matchMedia('(display-mode: standalone)').matches) {
-    installButton.style.display = 'block';
-  }
+// 3. INICIALIZAÇÃO QUANDO O DOCUMENTO ESTIVER PRONTO
+document.addEventListener('DOMContentLoaded', () => {
+  startNewSermon();
 });
 
-if (installButton) {
-  installButton.addEventListener('click', async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      console.log(`Ação do usuário na instalação: ${outcome}`);
-      deferredPrompt = null;
-      installButton.style.display = 'none';
+// 4. FUNÇÕES PRINCIPAIS
+
+/**
+ * Reseta a interface para o estado inicial, pronto para criar um novo sermão.
+ */
+function startNewSermon() {
+  currentStep = 1;
+
+  const stepContainer = document.getElementById('step-container');
+  const sermonResult = document.getElementById('sermonResult');
+  
+  stepContainer.innerHTML = `
+    <h2 id="question">Qual será o tema do seu sermão?</h2>
+    <div class="input-area">
+      <input type="text" id="user-input" placeholder="Ex: A Parábola do Filho Pródigo" onkeydown="if(event.key==='Enter') nextStep()">
+      <button onclick="nextStep()">Próximo</button>
+    </div>
+    <div id="options"></div>
+  `;
+  sermonResult.style.display = 'none';
+  sermonResult.innerHTML = '';
+}
+
+/**
+ * Processa a resposta do usuário e avança para a próxima etapa.
+ * @param {string} [response] - A resposta do usuário (opcional, usado para cliques em botões).
+ */
+function nextStep(response) {
+  let userResponse = response;
+  
+  // Se a resposta não veio do clique de um botão, pega do campo de input
+  if (!userResponse) {
+    const userInputField = document.getElementById('user-input');
+    if (userInputField && userInputField.value.trim() !== '') {
+      userResponse = userInputField.value.trim();
+    } else {
+      // Impede de avançar se o input estiver vazio
+      return; 
     }
+  }
+
+  // Se for a última etapa, chama a função para gerar o sermão
+  if (currentStep === 4) {
+    generateSermon(userResponse);
+    return;
+  }
+
+  // Envia a resposta para o back-end para obter a próxima pergunta
+  fetch('/api/next-step', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ step: currentStep, userResponse: userResponse })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.question) {
+      currentStep = data.step;
+      displayQuestion(data);
+    }
+  })
+  .catch(error => {
+    console.error('Erro ao buscar próxima etapa:', error);
+    const sermonResult = document.getElementById('sermonResult');
+    sermonResult.innerHTML = `
+        <h2>Ocorreu um Erro</h2>
+        <p>Houve um problema de comunicação com o servidor. Por favor, verifique sua conexão e tente novamente.</p>
+        <button onclick="startNewSermon()">Tentar Novamente</button>
+    `;
+    sermonResult.style.display = 'block';
+    document.getElementById('loading').style.display = 'none';
   });
 }
-// --- FIM DA LÓGICA DE ONBOARDING E PWA ---
 
-// --- LÓGICA PRINCIPAL DO APLICATIVO ---
+/**
+ * Exibe a pergunta e as opções recebidas do servidor.
+ * @param {object} data - O objeto contendo a pergunta e as opções.
+ */
+function displayQuestion(data) {
+  document.getElementById('question').innerText = data.question;
+  
+  const inputArea = document.querySelector('.input-area');
+  if(inputArea) inputArea.style.display = 'none';
 
-const topActions = document.getElementById('top-right-actions');
-const bottomActions = document.getElementById('bottom-right-actions');
-
-document
-  .getElementById("next-step-button")
-  .addEventListener("click", async () => {
-    const topic = document.getElementById("topic").value.trim();
-    if (!topic) {
-      alert("Por favor, digite o tema do sermão.");
-      return;
-    }
-
-    document.getElementById("form-container").style.display = "none";
-    document.getElementById("loading-screen").style.display = "flex";
-
-    const response = await fetch("/api/next-step", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userResponse: topic, step: 1 }),
-    });
-
-    const data = await response.json();
-    document.getElementById("loading-screen").style.display = "none";
-    showOptions(data);
-  });
-
-document.getElementById("restart-button").addEventListener("click", () => resetApp());
-document.getElementById("print-button").addEventListener("click", () => window.print());
-document.getElementById("home-button").addEventListener("click", () => resetApp());
-
-function showOptions(data) {
-  const optionsContainer = document.getElementById("options-container");
-  optionsContainer.innerHTML = "";
-  optionsContainer.style.display = "block";
-  data.options.forEach((option) => {
-    const button = document.createElement("button");
-    button.textContent = option;
-    button.addEventListener("click", () => nextStep(option, data.step));
+  const optionsContainer = document.getElementById('options');
+  optionsContainer.innerHTML = ''; 
+  data.options.forEach(option => {
+    const button = document.createElement('button');
+    button.className = 'option-button';
+    button.innerText = option;
+    button.onclick = () => nextStep(option);
     optionsContainer.appendChild(button);
   });
 }
 
-let loadingInterval;
-const longSermonMessages = [
-    "Consultando as referências e o contexto bíblico.",
-    "Estruturando a espinha dorsal da sua mensagem.",
-    "Definindo os pontos principais e a sequência lógica do sermão.",
-    "Esboçando a introdução para capturar a atenção dos ouvintes.",
-    "Aprofundando na exegese para uma base bíblica sólida.",
-    "Desenvolvendo cada ponto com clareza e profundidade.",
-    "Buscando ilustrações e aplicações práticas para o dia a dia.",
-    "Construindo uma conclusão impactante para a sua mensagem.",
-    "Revisando o texto para garantir fluidez e coesão.",
-    "Quase pronto! Polindo os detalhes finais do seu sermão."
-];
+/**
+ * Envia todos os dados coletados para o back-end para gerar o sermão final.
+ * @param {string} userResponse - A resposta da última etapa (duração).
+ */
+function generateSermon(userResponse) {
+  const loadingDiv = document.getElementById('loading');
+  const stepContainer = document.getElementById('step-container');
 
-async function nextStep(response, step) {
-  const loadingScreen = document.getElementById("loading-screen");
-  const loadingTextElement = document.getElementById("loading-text");
-  
-  document.getElementById("options-container").style.display = "none";
-  loadingScreen.style.display = "flex";
+  stepContainer.innerHTML = '';
+  loadingDiv.style.display = 'block';
 
-  if (step === 4) {
-      if(topActions) topActions.style.display = 'none';
-      if(bottomActions) bottomActions.style.display = 'none';
-  }
-
-  const longSermonTriggers = ["Entre 40 e 50 min", "Entre 50 e 60 min", "Acima de 1 hora"];
-
-  if (step === 4 && longSermonTriggers.includes(response)) {
-    loadingTextElement.textContent = "Você escolheu um sermão mais longo. A preparação pode levar um pouco mais de tempo, mas o resultado valerá a pena!";
-    
-    let messageIndex = 0;
-    setTimeout(() => {
-        loadingTextElement.textContent = longSermonMessages[messageIndex];
-        loadingInterval = setInterval(() => {
-            messageIndex = (messageIndex + 1) % longSermonMessages.length;
-            loadingTextElement.textContent = longSermonMessages[messageIndex];
-        }, 8000); 
-    }, 4000); 
-  } else {
-    loadingTextElement.textContent = "Gerando sermão, por favor aguarde...";
-  }
-
-  try {
-    const res = await fetch("/api/next-step", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userResponse: response, step }),
-    });
-    
-    clearInterval(loadingInterval);
-    loadingScreen.style.display = "none";
-    
-    const data = await res.json();
-    
-    if (data.question) {
-      showOptions(data);
-    } else if (data.sermon) {
-      // Modificação para mensagens de cortesia
-      if (data.sermon === "GRACE_PERIOD_ENDED") {
-          showGracePeriodEndScreen();
-      } else {
-          showSermon(data.sermon);
+  fetch('/api/next-step', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ step: 4, userResponse: userResponse })
+  })
+  .then(response => {
+      if (!response.ok) {
+          return response.json().then(errorData => {
+              throw errorData; 
+          });
       }
-    } else {
-      showErrorScreen(); 
-    }
-  } catch (error) {
-    clearInterval(loadingInterval);
-    loadingScreen.style.display = "none";
-    showErrorScreen();
+      return response.json();
+  })
+  .then(data => {
+      if (data.sermon) {
+          const sermonResult = document.getElementById('sermonResult');
+          const formattedSermon = data.sermon.replace(/\n/g, '<br>');
+          sermonResult.innerHTML = `
+              <h2>Seu Sermão:</h2>
+              <div class="sermon-content">${formattedSermon}</div>
+              <button onclick="copySermon()">Copiar Sermão</button>
+              <button onclick="startNewSermon()">Criar Novo Sermão</button>
+          `;
+          sermonResult.style.display = 'block';
+          loadingDiv.style.display = 'none';
+      } else {
+          throw new Error('Resposta inválida do servidor.');
+      }
+  })
+  .catch(error => {
+      console.error('Erro ao gerar sermão:', error);
+      const loadingDiv = document.getElementById('loading');
+      const sermonResult = document.getElementById('sermonResult');
+      
+      if (error && error.error === "Limite de cortesia atingido.") {
+          sermonResult.innerHTML = `
+              <h2>Atenção!</h2>
+              <p style="font-size: 1.2em; color: #D32F2F; margin-bottom: 20px;">${error.message}</p>
+              <a href="${error.renewal_url}" target="_blank" class="action-button" style="background-color: #4CAF50; color: white; padding: 15px 30px; text-decoration: none; font-size: 1.5em; border-radius: 8px; display: inline-block; margin-top: 10px;">LIBERAR ACESSO</a>
+              <br><br>
+              <button onclick="startNewSermon()" style="margin-top: 20px;">Voltar ao Início</button>
+          `;
+      } else {
+          sermonResult.innerHTML = `
+              <h2>Ocorreu um Erro</h2>
+              <p>Não foi possível gerar o sermão no momento. Por favor, tente novamente mais tarde.</p>
+              <button onclick="startNewSermon()">Tentar Novamente</button>
+          `;
+      }
+      
+      loadingDiv.style.display = 'none';
+      sermonResult.style.display = 'block';
+  });
+}
+
+/**
+ * Copia o conteúdo do sermão gerado para a área de transferência.
+ */
+function copySermon() {
+  const sermonContent = document.querySelector('.sermon-content');
+  if (sermonContent) {
+    const textToCopy = sermonContent.innerHTML.replace(/<br\s*[\/]?>/gi, "\n");
+    navigator.clipboard.writeText(textToCopy)
+      .then(() => {
+        alert('Sermão copiado para a área de transferência!');
+      })
+      .catch(err => {
+        console.error('Erro ao copiar sermão: ', err);
+        alert('Não foi possível copiar o texto.');
+      });
   }
-}
-
-function showSermon(content) {
-  const sermonResult = document.getElementById("sermon-result");
-  sermonResult.innerHTML = content
-    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\n/g, "<br>");
-  sermonResult.style.display = "block";
-  document.getElementById("restart-button").style.display = "block";
-  document.getElementById("print-button").style.display = "block";
-  
-  if(topActions) topActions.style.display = 'none';
-  if(bottomActions) bottomActions.style.display = 'none';
-}
-
-function showErrorScreen() {
-    document.getElementById("form-container").style.display = "none";
-    document.getElementById("options-container").style.display = "none";
-    document.getElementById("loading-screen").style.display = "none";
-    document.getElementById("sermon-result").style.display = "none";
-    document.getElementById("restart-button").style.display = "none";
-    document.getElementById("print-button").style.display = "none";
-    
-    if(topActions) topActions.style.display = 'flex';
-    if(bottomActions) bottomActions.style.display = 'block';
-    document.getElementById("error-container").style.display = "block";
-}
-
-// Nova função para mostrar a tela de fim de cortesia
-function showGracePeriodEndScreen() {
-    document.getElementById("form-container").style.display = "none";
-    document.getElementById("options-container").style.display = "none";
-    document.getElementById("loading-screen").style.display = "none";
-    
-    const graceEndContainer = document.getElementById("grace-period-end-container");
-    if (graceEndContainer) {
-        graceEndContainer.style.display = "block";
-    }
-    
-    // Esconde outros botões de ação
-    document.getElementById("restart-button").style.display = "none";
-    document.getElementById("print-button").style.display = "none";
-    if(topActions) topActions.style.display = 'flex';
-    if(bottomActions) bottomActions.style.display = 'block';
-}
-
-function resetApp() {
-    document.getElementById("options-container").style.display = "none";
-    document.getElementById("sermon-result").style.display = "none";
-    document.getElementById("restart-button").style.display = "none";
-    document.getElementById("print-button").style.display = "none";
-    document.getElementById("error-container").style.display = "none";
-    const graceEndContainer = document.getElementById("grace-period-end-container");
-    if (graceEndContainer) {
-        graceEndContainer.style.display = "none";
-    }
-    document.getElementById("topic").value = "";
-    document.getElementById("form-container").style.display = "block";
-    
-    if(topActions) topActions.style.display = 'flex';
-    if(bottomActions) bottomActions.style.display = 'block';
 }
