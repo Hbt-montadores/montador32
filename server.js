@@ -1,4 +1,4 @@
-// server.js - Versão 10.3 (Final com Gerenciamento Completo)
+// server.js - Versão 10.4 (Final com Reset de Cortesia)
 
 require("dotenv").config();
 const express = require("express");
@@ -20,28 +20,19 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 app.set('trust proxy', 1);
-
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/healthz", (req, res) => res.status(200).send("OK"));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-const loginLimiter = rateLimit({
-	windowMs: 15 * 60 * 1000, max: 15,
-	message: '<h1>Muitas tentativas de login</h1><p>Detectamos muitas tentativas a partir do seu IP. Por favor, tente novamente em 15 minutos.</p><a href="/">Voltar</a>',
-    standardHeaders: true, legacyHeaders: false,
-});
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 15, message: '<h1>Muitas tentativas de login</h1>', standardHeaders: true, legacyHeaders: false });
 
 app.use(
   session({
     store: new PgStore({ pool: pool, tableName: 'user_sessions' }),
     secret: process.env.SESSION_SECRET,
     resave: false, saveUninitialized: false,
-    cookie: { 
-        maxAge: 30 * 24 * 60 * 60 * 1000, 
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-    },
+    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true, secure: process.env.NODE_ENV === 'production' },
   })
 );
 
@@ -69,7 +60,7 @@ const checkAccessAndLogin = async (req, res, customer) => {
     const now = new Date();
     const accessRule = await getAccessControlRule(customer.email);
 
-    if (accessRule && accessRule.permission === 'block') { return res.status(403).send("<h1>Acesso Bloqueado</h1><p>Este acesso foi bloqueado manualmente. Entre em contato com o suporte.</p><a href='/'>Voltar</a>"); }
+    if (accessRule && accessRule.permission === 'block') { return res.status(403).send("<h1>Acesso Bloqueado</h1>"); }
     if (accessRule && accessRule.permission === 'allow') { req.session.loginAttempts = 0; req.session.user = { email: customer.email, status: 'lifetime' }; return res.redirect('/welcome.html'); }
     if (customer.annual_expires_at && now < new Date(customer.annual_expires_at)) { req.session.loginAttempts = 0; req.session.user = { email: customer.email, status: 'annual_paid' }; return res.redirect('/welcome.html'); }
     if (customer.monthly_status === 'paid') { req.session.loginAttempts = 0; req.session.user = { email: customer.email, status: 'monthly_paid' }; return res.redirect('/welcome.html'); }
@@ -125,21 +116,18 @@ app.post("/eduzz/webhook", async (req, res) => {
     const { api_key, product_cod, cus_email, cus_name, cus_cel, event_name, trans_cod, trans_paiddate, trans_paidtime } = req.body;
     if (api_key !== process.env.EDUZZ_API_KEY) { return res.status(403).send("API Key inválida."); }
     if (!cus_email || !product_cod || !event_name || !trans_cod) { return res.status(400).send("Dados insuficientes no webhook."); }
-    
     const lifetime_ids = (process.env.EDUZZ_LIFETIME_PRODUCT_IDS || "").split(',').map(id => id.trim());
     const annual_ids = (process.env.EDUZZ_ANNUAL_PRODUCT_IDS || "").split(',').map(id => id.trim());
     const monthly_ids = (process.env.EDUZZ_MONTHLY_PRODUCT_IDS || "").split(',').map(id => id.trim());
-    
     const productCodStr = product_cod.toString();
     let productType = null;
     if (lifetime_ids.includes(productCodStr)) productType = 'lifetime';
     else if (annual_ids.includes(productCodStr)) productType = 'annual';
     else if (monthly_ids.includes(productCodStr)) productType = 'monthly';
-
     try {
         if (!productType) {
             if (process.env.ENABLE_GRACE_PERIOD === 'true') { await registerProspect(cus_email, cus_name, cus_cel); return res.status(200).send("Prospect registrado."); } 
-            else { return res.status(200).send("Webhook ignorado (produto não mapeado)."); }
+            else { return res.status(200).send("Webhook ignorado."); }
         }
         if (event_name === 'invoice_paid') {
             switch (productType) {
@@ -168,15 +156,16 @@ const getAdminPanelHeader = (key, activePage) => {
         <style>
             body { font-family: sans-serif; padding: 20px; } table { border-collapse: collapse; width: 100%; }
             th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }
-            .actions a, .filter-links a, .add-button { margin-right: 10px; text-decoration: none; }
+            .actions a, .filter-links a, .add-button, .action-button-link { margin-right: 10px; text-decoration: none; }
             .nav-links a { margin-right: 20px; text-decoration: none; color: #1565C0; }
             .nav-links a.active { font-weight: bold; text-decoration: underline; }
-            .nav-container { margin-bottom: 20px; } .import-links { margin-top: 10px; }
+            .nav-container { margin-bottom: 20px; } .import-links { margin-top: 10px; display: inline-block; }
             .import-links a { font-weight: bold; }
             .filter-links { margin: 15px 0; }
             .filter-links a { padding: 5px 10px; border: 1px solid #1565C0; border-radius: 5px; color: #1565C0; }
             .filter-links a.active { background-color: #1565C0; color: white; }
-            .add-button { background-color: #4CAF50; color: white; padding: 8px 12px; border-radius: 5px; font-weight: bold; }
+            .add-button { background-color: #4CAF50; color: white; padding: 8px 12px; border-radius: 5px; font-weight: bold; display: inline-block; }
+            .action-button-link { background-color: #f44336; color: white; padding: 8px 12px; border-radius: 5px; font-weight: bold; display: inline-block; }
         </style>
         <h1>Painel de Administração</h1>
         <div class="nav-container">
@@ -186,18 +175,19 @@ const getAdminPanelHeader = (key, activePage) => {
             </div>
             <hr>
             <h3>Ações</h3>
-            <a href="/admin/new-customer?key=${key}" class="add-button">[+] Adicionar Novo Cliente</a>
+            <a href="/admin/new-customer?key=${key}" class="add-button">[+] Adicionar Cliente</a>
+            <a href="/admin/reset-grace?key=${key}" class="action-button-link" onclick="return confirm('Tem certeza que deseja zerar o contador de cortesia de TODOS os clientes?');">[!] Zerar Todas as Cortesias</a>
             <div class="import-links">
-                <a href="/admin/import-from-csv?key=${key}&plan_type=anual">[Importar Anuais via CSV]</a>
-                <a href="/admin/import-from-csv?key=${key}&plan_type=vitalicio">[Importar Vitalícios via CSV]</a>
-                <a href="/admin/import-from-csv?key=${key}&plan_type=mensal">[Importar Mensais via CSV]</a>
+                <a href="/admin/import-from-csv?key=${key}&plan_type=anual">[Importar Anuais]</a>
+                <a href="/admin/import-from-csv?key=${key}&plan_type=vitalicio">[Importar Vitalícios]</a>
+                <a href="/admin/import-from-csv?key=${key}&plan_type=mensal">[Importar Mensais]</a>
             </div>
         </div>
     `;
 };
 
 app.get("/admin/view-data", async (req, res) => {
-    const { key, filter } = req.query;
+    const { key, filter, message } = req.query;
     if (key !== process.env.ADMIN_KEY) { return res.status(403).send("<h1>Acesso Negado</h1>"); }
     let whereClause = '';
     switch(filter) {
@@ -215,6 +205,7 @@ app.get("/admin/view-data", async (req, res) => {
     try {
         const { rows } = await pool.query(baseQuery);
         let html = getAdminPanelHeader(key, 'data');
+        if (message === 'grace_reset_ok') { html += `<p style="color: green; font-weight: bold;">Contadores de cortesia de todos os clientes foram zerados com sucesso!</p>`; }
         html += `<div class="filter-links">
                 <strong>Filtrar por:</strong>
                 <a href="?key=${key}" ${!filter ? 'class="active"' : ''}>Todos</a>
@@ -278,8 +269,8 @@ const customerFormHTML = (key, data = {}) => {
                 </select>
             </div>
             <div class="field-group"><h3>Período de Cortesia</h3>
-                <div><label for="grace_sermons_used">Sermões de Cortesia Usados:</label><input type="number" id="grace_sermons_used" name="grace_sermons_used" value="${data.grace_sermons_used || 0}"></div>
-                <div><label for="grace_period_month">Mês da Cortesia (formato AAAA-MM):</label><input type="text" id="grace_period_month" name="grace_period_month" value="${data.grace_period_month || ''}"></div>
+                <div><label for="grace_sermons_used">Sermões Usados:</label><input type="number" id="grace_sermons_used" name="grace_sermons_used" value="${data.grace_sermons_used || 0}"></div>
+                <div><label for="grace_period_month">Mês da Cortesia (AAAA-MM):</label><input type="text" id="grace_period_month" name="grace_period_month" value="${data.grace_period_month || ''}"></div>
             </div>
             <button type="submit" style="margin-top: 20px;">Salvar Alterações</button>
         </form>
@@ -308,7 +299,6 @@ app.get("/admin/edit-customer", async (req, res) => {
 
 const updateCustomerData = async (client, data) => {
     const { email, name, phone, permission, annual_expires_at, monthly_status, grace_sermons_used, grace_period_month } = data;
-    
     const expirationDate = annual_expires_at ? new Date(annual_expires_at).toISOString() : null;
     const finalMonthlyStatus = monthly_status || null;
     const graceMonth = grace_period_month || null;
@@ -321,9 +311,7 @@ const updateCustomerData = async (client, data) => {
 
     if (permission && permission !== 'none') {
         const reason = `Acesso definido manualmente via painel (${permission})`;
-        const accessQuery = `
-            INSERT INTO access_control (email, permission, reason) VALUES ($1, $2, $3)
-            ON CONFLICT (email) DO UPDATE SET permission = EXCLUDED.permission, reason = EXCLUDED.reason;`;
+        const accessQuery = `INSERT INTO access_control (email, permission, reason) VALUES ($1, $2, $3) ON CONFLICT (email) DO UPDATE SET permission = EXCLUDED.permission, reason = EXCLUDED.reason;`;
         await client.query(accessQuery, [email, permission, reason]);
     } else {
         await client.query('DELETE FROM access_control WHERE email = $1', [email]);
@@ -339,10 +327,8 @@ app.post("/admin/create-customer", async (req, res) => {
         await updateCustomerData(client, req.body);
         await client.query('COMMIT');
         res.redirect(`/admin/view-data?key=${key}`);
-    } catch (error) {
-        await client.query('ROLLBACK'); console.error("Erro ao criar cliente:", error);
-        res.status(500).send("Erro ao criar cliente.");
-    } finally { client.release(); }
+    } catch (error) { await client.query('ROLLBACK'); console.error("Erro ao criar cliente:", error); res.status(500).send("Erro ao criar cliente."); } 
+    finally { client.release(); }
 });
 
 app.post("/admin/update-customer", async (req, res) => {
@@ -354,10 +340,17 @@ app.post("/admin/update-customer", async (req, res) => {
         await updateCustomerData(client, req.body);
         await client.query('COMMIT');
         res.redirect(`/admin/view-data?key=${key}`);
-    } catch (error) {
-        await client.query('ROLLBACK'); console.error("Erro ao atualizar cliente:", error);
-        res.status(500).send("Erro ao atualizar dados do cliente.");
-    } finally { client.release(); }
+    } catch (error) { await client.query('ROLLBACK'); console.error("Erro ao atualizar cliente:", error); res.status(500).send("Erro ao atualizar dados."); } 
+    finally { client.release(); }
+});
+
+app.get("/admin/reset-grace", async (req, res) => {
+    const { key } = req.query;
+    if (key !== process.env.ADMIN_KEY) { return res.status(403).send("Acesso Negado"); }
+    try {
+        await pool.query('UPDATE customers SET grace_sermons_used = 0');
+        res.redirect(`/admin/view-data?key=${key}&message=grace_reset_ok`);
+    } catch (error) { console.error("Erro ao zerar cortesias:", error); res.status(500).send("Erro ao zerar cortesias."); }
 });
 
 app.get("/admin/view-activity", async (req, res) => {
@@ -366,8 +359,8 @@ app.get("/admin/view-activity", async (req, res) => {
     try {
         const { rows } = await pool.query('SELECT * FROM activity_log ORDER BY created_at DESC LIMIT 500');
         let html = getAdminPanelHeader(key, 'activity');
-        html += `<h2>Log de Atividades (Últimos ${rows.length} sermões gerados)</h2>
-            <table><tr><th>Email</th><th>Tema</th><th>Público</th><th>Tipo</th><th>Duração</th><th>Modelo Usado</th><th>Gerado em (Brasília)</th></tr>`;
+        html += `<h2>Log de Atividades (Últimos ${rows.length} sermões)</h2>
+            <table><tr><th>Email</th><th>Tema</th><th>Público</th><th>Tipo</th><th>Duração</th><th>Modelo</th><th>Gerado em</th></tr>`;
         rows.forEach(log => {
             const dataCriacao = log.created_at ? new Date(log.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'N/A';
             html += `<tr><td>${log.user_email}</td><td>${log.sermon_topic}</td><td>${log.sermon_audience}</td><td>${log.sermon_type}</td><td>${log.sermon_duration}</td><td>${log.model_used}</td><td>${dataCriacao}</td></tr>`;
@@ -380,16 +373,16 @@ app.get("/admin/view-activity", async (req, res) => {
 app.get("/admin/import-from-csv", async (req, res) => {
     const { key, plan_type } = req.query;
     if (key !== process.env.ADMIN_KEY) { return res.status(403).send("<h1>Acesso Negado</h1>"); }
-    if (!['anual', 'vitalicio', 'mensal'].includes(plan_type)) { return res.status(400).send("<h1>Erro</h1><p>Tipo de plano inválido.</p>"); }
+    if (!['anual', 'vitalicio', 'mensal'].includes(plan_type)) { return res.status(400).send("<h1>Tipo de plano inválido.</h1>"); }
     const CSV_FILE_PATH = path.join(__dirname, 'lista-clientes.csv');
-    if (!fs.existsSync(CSV_FILE_PATH)) { return res.status(404).send("<h1>Erro</h1><p>Arquivo 'lista-clientes.csv' não encontrado.</p>"); }
+    if (!fs.existsSync(CSV_FILE_PATH)) { return res.status(404).send("<h1>Arquivo 'lista-clientes.csv' não encontrado.</h1>"); }
     const clientsToImport = [];
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.write(`<h1>Iniciando importação para plano: ${plan_type.toUpperCase()}...</h1>`);
+    res.write(`<h1>Iniciando importação: ${plan_type.toUpperCase()}...</h1>`);
     fs.createReadStream(CSV_FILE_PATH).pipe(csv({ separator: ';' }))
       .on('data', (row) => { if (row['Cliente / E-mail']) { clientsToImport.push(row); } })
       .on('end', async () => {
-        res.write(`<p>Leitura do CSV concluída. ${clientsToImport.length} clientes encontrados.</p><hr>`);
+        res.write(`<p>Leitura do CSV concluída: ${clientsToImport.length} clientes encontrados.</p><hr>`);
         if (clientsToImport.length === 0) return res.end('<p>Nenhum cliente para importar.</p>');
         const client = await pool.connect();
         try {
@@ -408,12 +401,12 @@ app.get("/admin/import-from-csv", async (req, res) => {
                     const expirationDate = new Date(paymentDate);
                     expirationDate.setDate(expirationDate.getDate() + 365);
                     await client.query(`INSERT INTO customers (email, name, phone, annual_expires_at, updated_at) VALUES ($1, $2, $3, $4, NOW()) ON CONFLICT (email) DO UPDATE SET name = COALESCE(EXCLUDED.name, customers.name), phone = COALESCE(EXCLUDED.phone, customers.phone), annual_expires_at = EXCLUDED.annual_expires_at, updated_at = NOW()`,[email, name, phone, expirationDate.toISOString()]);
-                    res.write(`<li>ANUAL: Cliente ${email} atualizado. Vencimento calculado para ${expirationDate.toLocaleDateString('pt-BR')}.</li>`);
+                    res.write(`<li>ANUAL: ${email} atualizado. Vencimento: ${expirationDate.toLocaleDateString('pt-BR')}.</li>`);
                 } else if (plan_type === 'vitalicio') {
                     const invoiceId = customerData['Fatura']; if (!invoiceId) continue;
-                    await client.query(`INSERT INTO access_control (email, permission, reason, product_id, invoice_id) VALUES ($1, 'allow', 'Importado via CSV - Vitalício', $2, $3) ON CONFLICT (email) DO NOTHING`, [email, customerData['ID do Produto'], invoiceId]);
+                    await client.query(`INSERT INTO access_control (email, permission, reason, product_id, invoice_id) VALUES ($1, 'allow', 'Importado via CSV', $2, $3) ON CONFLICT (email) DO NOTHING`, [email, customerData['ID do Produto'], invoiceId]);
                     await client.query(`INSERT INTO customers (email, name, phone) VALUES ($1, $2, $3) ON CONFLICT (email) DO NOTHING`, [email, name, phone]);
-                    res.write(`<li>VITALÍCIO: Cliente ${email} (Fatura: ${invoiceId}) adicionado.</li>`);
+                    res.write(`<li>VITALÍCIO: ${email} (Fatura: ${invoiceId}) adicionado.</li>`);
                 } else if (plan_type === 'mensal') {
                     const statusCsv = customerData['Status']?.toLowerCase(); if (!statusCsv) continue;
                     let status;
@@ -422,12 +415,12 @@ app.get("/admin/import-from-csv", async (req, res) => {
                     else if (statusCsv.includes('cancelada')) status = 'canceled';
                     else continue;
                     await client.query(`INSERT INTO customers (email, name, phone, monthly_status, updated_at) VALUES ($1, $2, $3, $4, NOW()) ON CONFLICT (email) DO UPDATE SET name = COALESCE(EXCLUDED.name, customers.name), phone = COALESCE(EXCLUDED.phone, customers.phone), monthly_status = EXCLUDED.monthly_status, updated_at = NOW()`, [email, name, phone, status]);
-                    res.write(`<li>MENSAL: Cliente ${email} atualizado com status '${status}'.</li>`);
+                    res.write(`<li>MENSAL: ${email} atualizado com status '${status}'.</li>`);
                 }
             }
             await client.query('COMMIT');
-            res.end(`</ul><hr><h2>✅ Sucesso!</h2><p>Importação para o plano ${plan_type.toUpperCase()} concluída.</p>`);
-        } catch (e) { await client.query('ROLLBACK'); res.end(`</ul><h2>❌ ERRO!</h2><p>Ocorreu um problema. Nenhuma alteração foi salva. Verifique os logs.</p><pre>${e.stack}</pre>`); console.error("ERRO DE IMPORTAÇÃO CSV:", e); } 
+            res.end(`</ul><hr><h2>✅ Sucesso!</h2><p>Importação concluída.</p>`);
+        } catch (e) { await client.query('ROLLBACK'); res.end(`</ul><h2>❌ ERRO!</h2><p>Ocorreu um problema. Nenhuma alteração foi salva.</p><pre>${e.stack}</pre>`); console.error("ERRO DE IMPORTAÇÃO CSV:", e); } 
         finally { client.release(); }
       });
 });
@@ -470,8 +463,8 @@ async function fetchWithTimeout(url, options, timeout = 90000) {
 
 function getPromptConfig(sermonType, duration) {
     const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '').trim();
-    const fallbackConfig = { structure: 'Gere um sermão completo com exegese e aplicação prática.', max_tokens: 2000 };
-    const configs = {'Expositivo':{'Entre 1 e 10 min':{structure:'Siga esta estrutura: 1. Uma linha objetiva com o Tema. 2. Uma linha objetiva com o contexto do texto bíblico. 3. Uma linha objetiva com a Aplicação Prática.',max_tokens:450},'Entre 10 e 20 min':{structure:'Siga esta estrutura: Desenvolva um único parágrafo muitíssimo breve e objetivo contendo uma introdução, a explicação da ideia central do texto bíblico e uma aplicação.',max_tokens:750},'Entre 20 e 30 min':{structure:'Siga esta estrutura: 1. Introdução (um parágrafo curto). 2. Contexto do texto bíblico (um parágrafo curto). 3. Exegese do bloco textual (um parágrafo curto). 4. Aplicação Prática (um parágrafo curto). 5. Conclusão (um parágrafo curto).',max_tokens:1200},'Entre 30 e 40 min':{structure:'Siga esta estrutura: 1. Introdução com ilustração. 2. Contexto do livro e da passagem bíblica. 3. Exegese verso a verso. 4. Aplicação para a vida pessoal. 5. Conclusão.',max_tokens:1900},'Entre 40 e 50 min':{structure:'Siga esta estrutura: 1. Introdução detalhada (dois parágrafos curtos). 2. Contexto histórico e teológico (dois parágrafos curtos). 3. Exegese aprofundada do texto bíblico (dois parágrafos curtos). 4. Aplicações, pessoal e comunitária (dois parágrafos curtos). 5. Conclusão com apelo (dois parágrafos curtos).',max_tokens:2500},'Entre 50 e 60 min':{structure:'Siga esta estrutura: 1. Introdução detalhada. 2. Grande Contexto Bíblico-Teológico. 3. Exegese minuciosa com análise de palavras no original. 4. Ilustrações. 5. Apontamentos para Cristo. 6. Aplicações multi-pastorais. 7. Conclusão e Oração.',max_tokens:3500},'Acima de 1 hora':{structure:'Siga esta estrutura: 1. Introdução Dramática. 2. Contexto Histórico-Cultural. 3. Discussão teológica. 4. Exegese exaustiva do texto bíblico, com múltiplas análises de palavras no original e curiosidades. 5. Referências Cruzadas. 6. Ilustrações Históricas. 7. Apontamentos para Cristo. 8. Aplicações profundas. 9. Conclusão missional com Apelo e Oração.',max_tokens:5000}},'Textual':{'Entre 1 e 10 min':{structure:'Siga esta estrutura: 1. Uma linha com a Leitura do Texto Bíblico-Base. 2. Uma linha com a ideia central. 3. Uma linha com a Aplicação.',max_tokens:450},'Entre 10 e 20 min':{structure:'Siga esta estrutura: Desenvolva um único parágrafo muitíssimo breve e objetivo contendo uma introdução, a explicação do tema principal do texto bíblico e uma conclusão.',max_tokens:750},'Entre 20 e 30 min':{structure:'Siga esta estrutura: 1. Introdução (um parágrafo curto). 2. Divisão do texto bíblico em 2 pontos, explicando cada um em um parágrafo curto. 3. Aplicação geral (um parágrafo curto). 4. Conclusão (um parágrafo curto).',max_tokens:1200},'Entre 30 e 40 min':{structure:'Siga esta estrutura: 1. Introdução. 2. Divisão do texto bíblico em 3 pontos principais. 3. Desenvolvimento de cada ponto com uma explicação clara. 4. Aplicação para cada ponto. 5. Conclusão.',max_tokens:1900},'Entre 40 e 50 min':{structure:'Siga esta estrutura: 1. Introdução com ilustração (dois parágrafos curtos). 2. Contexto da passagem bíblica (dois parágrafos curtos). 3. Divisão do texto bíblico em 3 pontos, com breve exegese (dois parágrafos curtos por ponto). 4. Aplicação (dois parágrafos curtos). 5. Conclusão com apelo (dois parágrafos curtos).',max_tokens:2500},'Entre 50 e 60 min':{structure:'Siga esta estrutura: 1. Introdução. 2. Contexto. 3. Divisão do texto bíblico em pontos lógicos. 4. Desenvolvimento aprofundado de cada ponto. 5. Análise de palavras-chave. 6. Ilustrações. 7. Conclusão e Oração.',max_tokens:3500},'Acima de 1 hora':{structure:'Siga esta estrutura: 1. Introdução. 2. Contexto completo. 3. Divisão do texto bíblico em todos os seus pontos naturais. 4. Desenvolvimento exaustivo de cada ponto, com exegese e referências cruzadas. 5. Análise de palavras no original. 6. Múltiplas Aplicações. 7. Curiosidades. 8. Conclusão.',max_tokens:5000}},'Temático':{'Entre 1 e 10 min':{structure:'Siga esta estrutura: 1. Uma linha de Apresentação do Tema. 2. Uma linha de explanação com um versículo bíblico principal. 3. Uma linha de Aplicação.',max_tokens:450},'Entre 10 e 20 min':{structure:'Siga esta estrutura: Desenvolva um único parágrafo muitíssimo breve e objetivo contendo uma introdução ao tema, um desenvolvimento com base em 2 textos bíblicos e uma aplicação.',max_tokens:750},'Entre 20 e 30 min':{structure:'Siga esta estrutura: 1. Introdução ao tema (um parágrafo curto). 2. Desenvolvimento do tema usando 2 pontos, cada um com um texto bíblico de apoio (um parágrafo curto por ponto). 3. Aplicação (um parágrafo curto). 4. Conclusão (um parágrafo curto).',max_tokens:1200},'Entre 30 e 40 min':{structure:'Siga esta estrutura: 1. Introdução ao tema. 2. Primeiro Ponto (com um texto bíblico de apoio). 3. Segundo Ponto (com outro texto bíblico de apoio). 4. Aplicação unificada. 5. Conclusão.',max_tokens:1900},'Entre 40 e 50 min':{structure:'Siga esta estrutura: 1. Introdução com ilustração (dois parágrafos curtos). 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico e uma breve explicação (dois parágrafos curtos por ponto). 3. Aplicações práticas (dois parágrafos curtos). 4. Conclusão (dois parágrafos curtos).',max_tokens:2500},'Entre 50 e 60 min':{structure:'Siga esta estrutura: 1. Introdução. 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico, breve exegese e uma ilustração. 3. Aplicações para cada ponto. 4. Conclusão com apelo.',max_tokens:3500},'Acima de 1 hora':{structure:'Siga esta estrutura: 1. Introdução. 2. Exploração profunda do tema através de múltiplas passagens bíblicas. 3. Análise teológica e prática. 4. Ilustrações e aplicações robustas. 5. Conclusão e oração.',max_tokens:5000}}};
+    const fallbackConfig = { structure: 'Gere um sermão completo', max_tokens: 2000 };
+    const configs = {'Expositivo':{'Entre 1 e 10 min':{structure:'Siga esta estrutura: 1. Tema. 2. Contexto do texto bíblico. 3. Aplicação Prática.',max_tokens:450},'Entre 10 e 20 min':{structure:'Desenvolva um parágrafo breve contendo uma introdução, a ideia central do texto e uma aplicação.',max_tokens:750},'Entre 20 e 30 min':{structure:'Siga esta estrutura: 1. Introdução. 2. Contexto. 3. Exegese. 4. Aplicação Prática. 5. Conclusão.',max_tokens:1200},'Entre 30 e 40 min':{structure:'Siga esta estrutura: 1. Introdução com ilustração. 2. Contexto da passagem. 3. Exegese verso a verso. 4. Aplicação pessoal. 5. Conclusão.',max_tokens:1900},'Entre 40 e 50 min':{structure:'Siga esta estrutura: 1. Introdução detalhada. 2. Contexto histórico e teológico. 3. Exegese aprofundada. 4. Aplicações (pessoal e comunitária). 5. Conclusão com apelo.',max_tokens:2500},'Entre 50 e 60 min':{structure:'Siga esta estrutura: 1. Introdução detalhada. 2. Grande Contexto Bíblico-Teológico. 3. Exegese minuciosa com análise de palavras no original. 4. Ilustrações. 5. Apontamentos para Cristo. 6. Aplicações multi-pastorais. 7. Conclusão e Oração.',max_tokens:3500},'Acima de 1 hora':{structure:'Siga esta estrutura: 1. Introdução Dramática. 2. Contexto Histórico-Cultural. 3. Discussão teológica. 4. Exegese exaustiva com múltiplas análises de palavras no original e curiosidades. 5. Referências Cruzadas. 6. Ilustrações Históricas. 7. Apontamentos para Cristo. 8. Aplicações profundas. 9. Conclusão missional com Apelo e Oração.',max_tokens:5000}},'Textual':{'Entre 1 e 10 min':{structure:'Siga esta estrutura: 1. Leitura do Texto. 2. Ideia central. 3. Aplicação.',max_tokens:450},'Entre 10 e 20 min':{structure:'Desenvolva um parágrafo breve contendo uma introdução, o tema principal do texto e uma conclusão.',max_tokens:750},'Entre 20 e 30 min':{structure:'Siga esta estrutura: 1. Introdução. 2. Divisão em 2 pontos. 3. Aplicação geral. 4. Conclusão.',max_tokens:1200},'Entre 30 e 40 min':{structure:'Siga esta estrutura: 1. Introdução. 2. Divisão em 3 pontos. 3. Desenvolvimento de cada ponto. 4. Aplicação para cada ponto. 5. Conclusão.',max_tokens:1900},'Entre 40 e 50 min':{structure:'Siga esta estrutura: 1. Introdução com ilustração. 2. Contexto. 3. Divisão em 3 pontos com breve exegese. 4. Aplicação. 5. Conclusão com apelo.',max_tokens:2500},'Entre 50 e 60 min':{structure:'Siga esta estrutura: 1. Introdução. 2. Contexto. 3. Divisão em pontos lógicos. 4. Desenvolvimento aprofundado. 5. Análise de palavras-chave. 6. Ilustrações. 7. Conclusão e Oração.',max_tokens:3500},'Acima de 1 hora':{structure:'Siga esta estrutura: 1. Introdução. 2. Contexto completo. 3. Divisão em todos os pontos naturais. 4. Desenvolvimento exaustivo, com exegese e referências cruzadas. 5. Análise de palavras no original. 6. Múltiplas Aplicações. 7. Curiosidades. 8. Conclusão.',max_tokens:5000}},'Temático':{'Entre 1 e 10 min':{structure:'Siga esta estrutura: 1. Apresentação do Tema. 2. Explanação com um versículo principal. 3. Aplicação.',max_tokens:450},'Entre 10 e 20 min':{structure:'Desenvolva um parágrafo breve contendo introdução ao tema, desenvolvimento com base em 2 textos e uma aplicação.',max_tokens:750},'Entre 20 e 30 min':{structure:'Siga esta estrutura: 1. Introdução ao tema. 2. Desenvolvimento em 2 pontos, cada um com um texto bíblico. 3. Aplicação. 4. Conclusão.',max_tokens:1200},'Entre 30 e 40 min':{structure:'Siga esta estrutura: 1. Introdução ao tema. 2. Primeiro Ponto (com texto de apoio). 3. Segundo Ponto (com outro texto de apoio). 4. Aplicação. 5. Conclusão.',max_tokens:1900},'Entre 40 e 50 min':{structure:'Siga esta estrutura: 1. Introdução com ilustração. 2. Três pontos sobre o tema, cada um com um texto e explicação. 3. Aplicações práticas. 4. Conclusão.',max_tokens:2500},'Entre 50 e 60 min':{structure:'Siga esta estrutura: 1. Introdução. 2. Três pontos sobre o tema, cada um com texto, breve exegese e ilustração. 3. Aplicações para cada ponto. 4. Conclusão com apelo.',max_tokens:3500},'Acima de 1 hora':{structure:'Siga esta estrutura: 1. Introdução. 2. Exploração profunda do tema com múltiplas passagens. 3. Análise teológica e prática. 4. Ilustrações e aplicações robustas. 5. Conclusão e oração.',max_tokens:5000}}};
     let config = fallbackConfig;
     if (configs[cleanSermonType] && configs[cleanSermonType][duration]) { config = configs[cleanSermonType][duration]; }
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
