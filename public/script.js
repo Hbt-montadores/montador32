@@ -1,4 +1,4 @@
-// script.js - Versão 11.0 (Definitiva e Completa)
+// script.js - Versão 12.0 (Final com Correção de Inicialização)
 
 // 1. REGISTRO DO SERVICE WORKER (PARA FUNCIONALIDADE PWA)
 if ('serviceWorker' in navigator) {
@@ -16,9 +16,14 @@ if ('serviceWorker' in navigator) {
 // 2. ESTADO DA APLICAÇÃO
 let currentStep = 1;
 
-// 3. INICIALIZAÇÃO QUANDO O DOCUMENTO ESTIVER PRONTO
-document.addEventListener('DOMContentLoaded', () => {
-  startNewSermon();
+// 3. INICIALIZAÇÃO CORRIGIDA
+// O evento 'load' espera que TUDO na página esteja pronto (incluindo imagens, etc.)
+// o que garante que todos os elementos HTML já existem.
+window.addEventListener('load', () => {
+  // Apenas inicia o sermão se o container principal existir (ou seja, estamos em app.html)
+  if (document.getElementById('step-container')) {
+    startNewSermon();
+  }
 });
 
 
@@ -34,6 +39,12 @@ function startNewSermon() {
   const sermonResult = document.getElementById('sermonResult');
   const loadingDiv = document.getElementById('loading');
   
+  // Verificação de segurança para garantir que os elementos existem antes de manipulá-los
+  if (!stepContainer || !sermonResult || !loadingDiv) {
+    console.error("Elementos essenciais da interface não foram encontrados. Verifique o app.html.");
+    return;
+  }
+
   stepContainer.innerHTML = `
     <h2 id="question">Qual será o tema do seu sermão?</h2>
     <div class="input-area">
@@ -80,13 +91,10 @@ function handleFetchError(error) {
     const sermonResult = document.getElementById('sermonResult');
     const stepContainer = document.getElementById('step-container');
 
-    // Esconde os elementos de loading e de passos
     if (loadingDiv) loadingDiv.style.display = 'none';
     if (stepContainer) stepContainer.style.display = 'none';
     
-    // Lógica para exibir a mensagem de erro correta
     if (error && error.error === "Limite de cortesia atingido.") {
-        // Erro específico de cortesia
         sermonResult.innerHTML = `
             <h2>Atenção!</h2>
             <p style="font-size: 1.2em; color: #D32F2F; margin-bottom: 20px;">${error.message}</p>
@@ -95,7 +103,6 @@ function handleFetchError(error) {
             <button onclick="startNewSermon()" style="margin-top: 20px;">Voltar ao Início</button>
         `;
     } else {
-        // Erro genérico para qualquer outra falha
         sermonResult.innerHTML = `
             <h2>Ocorreu um Erro</h2>
             <p>Não foi possível continuar. Por favor, verifique sua conexão com a internet e tente novamente.</p>
@@ -206,7 +213,6 @@ function generateSermon(userResponse) {
 function copySermon() {
   const sermonContent = document.querySelector('.sermon-content');
   if (sermonContent) {
-    // Converte <br> de volta para quebras de linha reais para a cópia
     const textToCopy = sermonContent.innerHTML.replace(/<br\s*[\/]?>/gi, "\n");
     navigator.clipboard.writeText(textToCopy)
       .then(() => {
