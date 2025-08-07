@@ -1,4 +1,4 @@
-// server.js - Versão 10.1 (Final com Bloqueio Imediato e Log)
+// server.js - Versão 10.2 (Final com Formatação de Data e Limpeza de IDs)
 
 require("dotenv").config();
 const express = require("express");
@@ -151,14 +151,17 @@ app.post("/eduzz/webhook", async (req, res) => {
     const { api_key, product_cod, cus_email, cus_name, cus_cel, event_name, trans_cod, trans_paiddate, trans_paidtime } = req.body;
     if (api_key !== process.env.EDUZZ_API_KEY) { console.warn(`[Webhook-Segurança] API Key inválida recebida.`); return res.status(403).send("API Key inválida."); }
     if (!cus_email || !product_cod || !event_name || !trans_cod) { console.warn("[Webhook-Aviso] Webhook recebido com dados essenciais faltando.", { email: cus_email, prod: product_cod, event: event_name, invoice: trans_cod }); return res.status(400).send("Dados insuficientes no webhook."); }
-    const lifetime_ids = (process.env.EDUZZ_LIFETIME_PRODUCT_IDS || "").split(',');
-    const annual_ids = (process.env.EDUZZ_ANNUAL_PRODUCT_IDS || "").split(',');
-    const monthly_ids = (process.env.EDUZZ_MONTHLY_PRODUCT_IDS || "").split(',');
+    
+    const lifetime_ids = (process.env.EDUZZ_LIFETIME_PRODUCT_IDS || "").split(',').map(id => id.trim());
+    const annual_ids = (process.env.EDUZZ_ANNUAL_PRODUCT_IDS || "").split(',').map(id => id.trim());
+    const monthly_ids = (process.env.EDUZZ_MONTHLY_PRODUCT_IDS || "").split(',').map(id => id.trim());
+    
     const productCodStr = product_cod.toString();
     let productType = null;
     if (lifetime_ids.includes(productCodStr)) productType = 'lifetime';
     else if (annual_ids.includes(productCodStr)) productType = 'annual';
     else if (monthly_ids.includes(productCodStr)) productType = 'monthly';
+
     try {
         if (!productType) {
             if (process.env.ENABLE_GRACE_PERIOD === 'true') {
@@ -173,7 +176,20 @@ app.post("/eduzz/webhook", async (req, res) => {
         if (event_name === 'invoice_paid') {
             switch (productType) {
                 case 'lifetime': await updateLifetimeAccess(cus_email, cus_name, cus_cel, trans_cod, product_cod); console.log(`[Webhook-Sucesso] Acesso VITALÍCIO concedido para [${cus_email}].`); break;
-                case 'annual': const paidAt = `${trans_paiddate} ${trans_paidtime}`; await updateAnnualAccess(cus_email, cus_name, cus_cel, trans_cod, paidAt); console.log(`[Webhook-Sucesso] Acesso ANUAL concedido/renovado para [${cus_email}].`); break;
+                case 'annual': 
+                    // ===== LÓGICA DE FORMATAÇÃO DE DATA ADICIONADA =====
+                    let paidAt = `${trans_paiddate || ''} ${trans_paidtime || ''}`.trim();
+                    if (paidAt && /^\d{8}\s/.test(paidAt)) { // Verifica se o formato é AAAAMMDD HH:MM:SS
+                        const datePart = paidAt.substring(0, 8);
+                        const timePart = paidAt.substring(9);
+                        paidAt = `${datePart.substring(0, 4)}-${datePart.substring(4, 6)}-${datePart.substring(6, 8)}T${timePart}`;
+                    } else {
+                        paidAt = paidAt.replace(' ', 'T'); // Tenta o formato AAAA-MM-DD HH:MM:SS
+                    }
+                    // =======================================================
+                    await updateAnnualAccess(cus_email, cus_name, cus_cel, trans_cod, paidAt); 
+                    console.log(`[Webhook-Sucesso] Acesso ANUAL concedido/renovado para [${cus_email}].`); 
+                    break;
                 case 'monthly': await updateMonthlyStatus(cus_email, cus_name, cus_cel, trans_cod, 'paid'); console.log(`[Webhook-Sucesso] Acesso MENSAL atualizado para 'paid' para [${cus_email}].`); break;
             }
         } 
