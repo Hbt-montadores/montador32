@@ -9,7 +9,7 @@ const PgStore = require("connect-pg-simple")(session);
 const rateLimit = require('express-rate-limit');
 const fs = require('fs');
 const csv = require('csv-parser');
-const cors = require('cors'); // Importa o CORS
+const cors = require('cors');
 
 const { 
     pool, getCustomerRecordByEmail, getCustomerRecordByPhone, getAccessControlRule,
