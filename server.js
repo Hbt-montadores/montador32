@@ -1,4 +1,4 @@
-// server.js - Versão 10.0 (Final Polido)
+// server.js - Versão 10.1 (Final com Bloqueio Imediato e Log)
 
 require("dotenv").config();
 const express = require("express");
@@ -384,7 +384,6 @@ app.get("/admin/import-from-csv", async (req, res) => {
                 const phone = customerData['Cliente / Fones'];
 
                 if (plan_type === 'anual') {
-                    // ===== LÓGICA DE DATA CORRIGIDA =====
                     const paymentDateStr = customerData['Data de Pagamento'];
                     if (!paymentDateStr) continue;
 
@@ -478,27 +477,43 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
     const { userResponse } = req.body; const step = req.body.step || 1;
     console.log(`Usuário [${req.session.user.email}] - Etapa ${step}: ${userResponse}`);
     try {
-        if (step === 4) {
-            const customer = await getCustomerRecordByEmail(req.session.user.email);
-            if (req.session.user.status === 'grace_period') {
-                const now = new Date(); const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-                let sermonsUsed = customer.grace_sermons_used || 0; if(customer.grace_period_month !== currentMonth){ sermonsUsed = 0; }
-                await updateGraceSermons(customer.email, sermonsUsed + 1, currentMonth); console.log(`[Cortesia] Sermão de cortesia Nº${sermonsUsed + 1} para ${customer.email}.`);
-            }
-        }
         if (step === 1) { req.session.sermonData = { topic: userResponse }; return res.json({ question: "Que tipo de público você vai pregar?", options: ["A) Crianças", "B) Adolescentes", "C) Jovens", "D) Mulheres", "E) Homens", "F) Público misto", "G) Não convertido"], step: 2 }); }
         if (step === 2) { req.session.sermonData.audience = userResponse; return res.json({ question: "Que tipo de sermão você vai pregar?", options: ["A) Expositivo", "B) Textual", "C) Temático"], step: 3 }); }
         if (step === 3) { req.session.sermonData.sermonType = userResponse; return res.json({ question: "Quantos minutos deve durar o sermão?", options: ["Entre 1 e 10 min", "Entre 10 e 20 min", "Entre 20 e 30 min", "Entre 30 e 40 min", "Entre 40 e 50 min", "Entre 50 e 60 min", "Acima de 1 hora"], step: 4 }); }
+        
         if (step === 4) {
+            const customer = await getCustomerRecordByEmail(req.session.user.email);
+            const graceSermonsLimit = parseInt(process.env.GRACE_PERIOD_SERMONS, 10) || 2;
+
+            if (req.session.user.status === 'grace_period') {
+                const now = new Date();
+                const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                let sermonsUsed = customer.grace_sermons_used || 0;
+                if (customer.grace_period_month !== currentMonth) { sermonsUsed = 0; }
+
+                if (sermonsUsed >= graceSermonsLimit) {
+                    return res.status(403).json({
+                        error: "Limite de cortesia atingido.",
+                        message: `Você já utilizou seus ${graceSermonsLimit} sermões de cortesia. Para continuar, por favor, renove sua assinatura.`,
+                        renewal_url: "https://casadopregador.com/pv/montador3anual"
+                    });
+                }
+                
+                await updateGraceSermons(customer.email, sermonsUsed + 1, currentMonth);
+                console.log(`[Cortesia] Sermão de cortesia Nº${sermonsUsed + 1} de ${graceSermonsLimit} registrado para ${customer.email}.`);
+            }
+
             req.session.sermonData.duration = userResponse;
             const { topic, audience, sermonType, duration } = req.session.sermonData;
             if (!topic || !audience || !sermonType || !duration) { return res.status(400).json({ error: "Faltam informações." }); }
             if (!process.env.OPENAI_API_KEY) { console.error("Erro: Chave OpenAI não configurada."); return res.status(500).json({ error: "Erro interno." }); }
+            
             const promptConfig = getPromptConfig(sermonType, duration);
             const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '').trim();
             const cleanAudience = audience.replace(/^[A-Z]\)\s*/, '').trim();
             const prompt = `Gere um sermão do tipo ${cleanSermonType} para um público de ${cleanAudience} sobre o tema "${topic}". ${promptConfig.structure}`;
             const { model, temperature, max_tokens } = promptConfig;
+            
             console.log(`[OpenAI] Enviando requisição. Modelo: ${model}, Temp: ${temperature}, Max Tokens: ${max_tokens}`);
             try {
                 const data = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
@@ -508,10 +523,17 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                 if (!data || !data.choices || data.choices.length === 0) { throw new Error("Resposta inválida da OpenAI."); }
                 console.log(`[OpenAI] Sermão para [${req.session.user.email}] gerado com sucesso.`);
                 await logSermonActivity({ user_email: req.session.user.email, sermon_topic: topic, sermon_audience: audience, sermon_type: sermonType, sermon_duration: duration, model_used: model, prompt_instruction: promptConfig.structure });
-                delete req.session.sermonData; res.json({ sermon: data.choices[0].message.content });
-            } catch (error) { console.error("[Erro ao gerar sermão]:", error); return res.status(500).json({ error: "Erro ao se comunicar com a IA." }); }
+                delete req.session.sermonData; 
+                res.json({ sermon: data.choices[0].message.content });
+            } catch (error) { 
+                console.error("[Erro ao gerar sermão]:", error); 
+                return res.status(500).json({ error: "Erro ao se comunicar com a IA." }); 
+            }
         }
-    } catch (error) { console.error("[Erro geral /api/next-step]", error); return res.status(500).json({ error: `Erro interno.` }); }
+    } catch (error) { 
+        console.error("[Erro geral /api/next-step]", error); 
+        return res.status(500).json({ error: `Erro interno.` }); 
+    }
 });
 
 app.listen(port, () => {
