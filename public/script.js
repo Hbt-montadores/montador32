@@ -1,4 +1,4 @@
-// script.js - Versão Final (com tratamento de erro de cortesia)
+// script.js - Versão 11.0 (Definitiva e Completa)
 
 // 1. REGISTRO DO SERVICE WORKER (PARA FUNCIONALIDADE PWA)
 if ('serviceWorker' in navigator) {
@@ -21,7 +21,8 @@ document.addEventListener('DOMContentLoaded', () => {
   startNewSermon();
 });
 
-// 4. FUNÇÕES PRINCIPAIS
+
+// 4. FUNÇÕES DE MANIPULAÇÃO DA INTERFACE
 
 /**
  * Reseta a interface para o estado inicial, pronto para criar um novo sermão.
@@ -31,6 +32,7 @@ function startNewSermon() {
 
   const stepContainer = document.getElementById('step-container');
   const sermonResult = document.getElementById('sermonResult');
+  const loadingDiv = document.getElementById('loading');
   
   stepContainer.innerHTML = `
     <h2 id="question">Qual será o tema do seu sermão?</h2>
@@ -40,58 +42,11 @@ function startNewSermon() {
     </div>
     <div id="options"></div>
   `;
+
+  stepContainer.style.display = 'block';
   sermonResult.style.display = 'none';
   sermonResult.innerHTML = '';
-}
-
-/**
- * Processa a resposta do usuário e avança para a próxima etapa.
- * @param {string} [response] - A resposta do usuário (opcional, usado para cliques em botões).
- */
-function nextStep(response) {
-  let userResponse = response;
-  
-  // Se a resposta não veio do clique de um botão, pega do campo de input
-  if (!userResponse) {
-    const userInputField = document.getElementById('user-input');
-    if (userInputField && userInputField.value.trim() !== '') {
-      userResponse = userInputField.value.trim();
-    } else {
-      // Impede de avançar se o input estiver vazio
-      return; 
-    }
-  }
-
-  // Se for a última etapa, chama a função para gerar o sermão
-  if (currentStep === 4) {
-    generateSermon(userResponse);
-    return;
-  }
-
-  // Envia a resposta para o back-end para obter a próxima pergunta
-  fetch('/api/next-step', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ step: currentStep, userResponse: userResponse })
-  })
-  .then(response => response.json())
-  .then(data => {
-    if (data.question) {
-      currentStep = data.step;
-      displayQuestion(data);
-    }
-  })
-  .catch(error => {
-    console.error('Erro ao buscar próxima etapa:', error);
-    const sermonResult = document.getElementById('sermonResult');
-    sermonResult.innerHTML = `
-        <h2>Ocorreu um Erro</h2>
-        <p>Houve um problema de comunicação com o servidor. Por favor, verifique sua conexão e tente novamente.</p>
-        <button onclick="startNewSermon()">Tentar Novamente</button>
-    `;
-    sermonResult.style.display = 'block';
-    document.getElementById('loading').style.display = 'none';
-  });
+  loadingDiv.style.display = 'none';
 }
 
 /**
@@ -116,6 +71,90 @@ function displayQuestion(data) {
 }
 
 /**
+ * Lida com todos os tipos de erro de fetch, exibindo a mensagem apropriada.
+ * @param {object} error - O objeto de erro capturado.
+ */
+function handleFetchError(error) {
+    console.error('Erro na comunicação com o servidor:', error);
+    const loadingDiv = document.getElementById('loading');
+    const sermonResult = document.getElementById('sermonResult');
+    const stepContainer = document.getElementById('step-container');
+
+    // Esconde os elementos de loading e de passos
+    if (loadingDiv) loadingDiv.style.display = 'none';
+    if (stepContainer) stepContainer.style.display = 'none';
+    
+    // Lógica para exibir a mensagem de erro correta
+    if (error && error.error === "Limite de cortesia atingido.") {
+        // Erro específico de cortesia
+        sermonResult.innerHTML = `
+            <h2>Atenção!</h2>
+            <p style="font-size: 1.2em; color: #D32F2F; margin-bottom: 20px;">${error.message}</p>
+            <a href="${error.renewal_url}" target="_blank" class="action-button" style="background-color: #4CAF50; color: white; padding: 15px 30px; text-decoration: none; font-size: 1.5em; border-radius: 8px; display: inline-block; margin-top: 10px;">LIBERAR ACESSO</a>
+            <br><br>
+            <button onclick="startNewSermon()" style="margin-top: 20px;">Voltar ao Início</button>
+        `;
+    } else {
+        // Erro genérico para qualquer outra falha
+        sermonResult.innerHTML = `
+            <h2>Ocorreu um Erro</h2>
+            <p>Não foi possível continuar. Por favor, verifique sua conexão com a internet e tente novamente.</p>
+            <button onclick="startNewSermon()">Tentar Novamente</button>
+        `;
+    }
+    
+    sermonResult.style.display = 'block';
+}
+
+
+// 5. FUNÇÕES DE COMUNICAÇÃO COM O SERVIDOR
+
+/**
+ * Processa a resposta do usuário e avança para a próxima etapa.
+ * @param {string} [response] - A resposta do usuário (opcional, usado para cliques em botões).
+ */
+function nextStep(response) {
+  let userResponse = response;
+  
+  if (!userResponse) {
+    const userInputField = document.getElementById('user-input');
+    if (userInputField && userInputField.value.trim() !== '') {
+      userResponse = userInputField.value.trim();
+    } else {
+      return; 
+    }
+  }
+
+  if (currentStep === 4) {
+    generateSermon(userResponse);
+    return;
+  }
+
+  fetch('/api/next-step', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ step: currentStep, userResponse: userResponse })
+  })
+  .then(response => {
+    if (!response.ok) {
+        return response.json().then(errorData => {
+            throw errorData || new Error('Erro de servidor'); 
+        });
+    }
+    return response.json();
+  })
+  .then(data => {
+    if (data.question) {
+      currentStep = data.step;
+      displayQuestion(data);
+    } else {
+      throw new Error('Resposta inválida do servidor.');
+    }
+  })
+  .catch(handleFetchError);
+}
+
+/**
  * Envia todos os dados coletados para o back-end para gerar o sermão final.
  * @param {string} userResponse - A resposta da última etapa (duração).
  */
@@ -123,7 +162,7 @@ function generateSermon(userResponse) {
   const loadingDiv = document.getElementById('loading');
   const stepContainer = document.getElementById('step-container');
 
-  stepContainer.innerHTML = '';
+  stepContainer.style.display = 'none';
   loadingDiv.style.display = 'block';
 
   fetch('/api/next-step', {
@@ -134,7 +173,7 @@ function generateSermon(userResponse) {
   .then(response => {
       if (!response.ok) {
           return response.json().then(errorData => {
-              throw errorData; 
+              throw errorData || new Error('Erro de servidor');
           });
       }
       return response.json();
@@ -155,31 +194,11 @@ function generateSermon(userResponse) {
           throw new Error('Resposta inválida do servidor.');
       }
   })
-  .catch(error => {
-      console.error('Erro ao gerar sermão:', error);
-      const loadingDiv = document.getElementById('loading');
-      const sermonResult = document.getElementById('sermonResult');
-      
-      if (error && error.error === "Limite de cortesia atingido.") {
-          sermonResult.innerHTML = `
-              <h2>Atenção!</h2>
-              <p style="font-size: 1.2em; color: #D32F2F; margin-bottom: 20px;">${error.message}</p>
-              <a href="${error.renewal_url}" target="_blank" class="action-button" style="background-color: #4CAF50; color: white; padding: 15px 30px; text-decoration: none; font-size: 1.5em; border-radius: 8px; display: inline-block; margin-top: 10px;">LIBERAR ACESSO</a>
-              <br><br>
-              <button onclick="startNewSermon()" style="margin-top: 20px;">Voltar ao Início</button>
-          `;
-      } else {
-          sermonResult.innerHTML = `
-              <h2>Ocorreu um Erro</h2>
-              <p>Não foi possível gerar o sermão no momento. Por favor, tente novamente mais tarde.</p>
-              <button onclick="startNewSermon()">Tentar Novamente</button>
-          `;
-      }
-      
-      loadingDiv.style.display = 'none';
-      sermonResult.style.display = 'block';
-  });
+  .catch(handleFetchError);
 }
+
+
+// 6. FUNÇÕES AUXILIARES
 
 /**
  * Copia o conteúdo do sermão gerado para a área de transferência.
@@ -187,6 +206,7 @@ function generateSermon(userResponse) {
 function copySermon() {
   const sermonContent = document.querySelector('.sermon-content');
   if (sermonContent) {
+    // Converte <br> de volta para quebras de linha reais para a cópia
     const textToCopy = sermonContent.innerHTML.replace(/<br\s*[\/]?>/gi, "\n");
     navigator.clipboard.writeText(textToCopy)
       .then(() => {
