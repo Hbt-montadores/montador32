@@ -1,4 +1,4 @@
-// server.js - Versão Definitiva (Correção na rota de log)
+// server.js - Versão Final com Revogação por Chargeback
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -227,7 +227,8 @@ app.post("/eduzz/webhook", async (req, res) => {
         else if (productType === 'monthly' && event_name === 'contract_delayed') {
              await updateMonthlyStatus(cus_email, cus_name, cus_cel, trans_cod, 'overdue');
         }
-        else if (['contract_canceled', 'invoice_refunded', 'invoice_expired'].includes(event_name)) {
+        // MODIFICADO: Adicionado 'invoice_chargeback' à lista de eventos de revogação
+        else if (['contract_canceled', 'invoice_refunded', 'invoice_expired', 'invoice_chargeback'].includes(event_name)) {
             await revokeAccessByInvoice(trans_cod, productType);
             console.log(`[Webhook-Sucesso] Acesso da fatura [${trans_cod}] revogado para [${cus_email}] devido a [${event_name}].`);
         }
@@ -575,11 +576,9 @@ app.get("/app", requireLogin, (req, res) => {
     res.sendFile(path.join(__dirname, "public", "app.html"));
 });
 
-// MODIFICADO: Rota de log de erros do cliente agora é mais robusta
 app.post("/api/log-error", (req, res) => {
     const userEmail = req.session && req.session.user ? req.session.user.email : 'Visitante Anônimo';
     
-    // Garante que 'level' e 'message' tenham valores padrão para evitar erros
     const level = req.body.level || 'UNDEFINED_LEVEL';
     const message = req.body.message || 'Mensagem de erro vazia recebida.';
 
