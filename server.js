@@ -1,4 +1,4 @@
-// server.js - Versão Final e Permanente
+// server.js - Versão Final Definitiva com Logs de Atividade Restaurados
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -211,21 +211,26 @@ app.post("/eduzz/webhook", async (req, res) => {
             switch (productType) {
                 case 'lifetime':
                     await updateLifetimeAccess(cus_email, cus_name, cus_cel, trans_cod, product_cod);
+                    console.log(`[Webhook-Sucesso] Acesso VITALÍCIO concedido para [${cus_email}] via fatura [${trans_cod}].`);
                     break;
                 case 'annual':
                     const paidAt = `${trans_paiddate} ${trans_paidtime}`;
                     await updateAnnualAccess(cus_email, cus_name, cus_cel, trans_cod, paidAt);
+                    console.log(`[Webhook-Sucesso] Acesso ANUAL concedido/renovado para [${cus_email}] via fatura [${trans_cod}].`);
                     break;
                 case 'monthly':
                     await updateMonthlyStatus(cus_email, cus_name, cus_cel, trans_cod, 'paid');
+                    console.log(`[Webhook-Sucesso] Acesso MENSAL atualizado para 'paid' para [${cus_email}] via fatura [${trans_cod}].`);
                     break;
             }
         } 
         else if (productType === 'monthly' && ['contract_up_to_date', 'invoice_renewed'].includes(event_name)) {
              await updateMonthlyStatus(cus_email, cus_name, cus_cel, trans_cod, 'paid');
+             console.log(`[Webhook-Sucesso] Status MENSAL de [${cus_email}] atualizado para 'paid' (contrato em dia).`);
         }
         else if (productType === 'monthly' && event_name === 'contract_delayed') {
              await updateMonthlyStatus(cus_email, cus_name, cus_cel, trans_cod, 'overdue');
+             console.log(`[Webhook-Sucesso] Status MENSAL de [${cus_email}] atualizado para 'overdue' (contrato atrasado).`);
         }
         else if (['contract_canceled', 'invoice_refunded', 'invoice_expired', 'invoice_chargeback'].includes(event_name)) {
             await revokeAccessByInvoice(trans_cod, productType);
@@ -678,3 +683,61 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                 const graceSermonsLimit = parseInt(process.env.GRACE_PERIOD_SERMONS, 10) || 2;
                 const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
                 let sermonsUsed = customer.grace_sermons_used || 0;
+                if (customer.grace_period_month !== currentMonth) sermonsUsed = 0;
+
+                if (sermonsUsed >= graceSermonsLimit) {
+                    console.log(`[Acesso Negado] Limite de cortesia atingido para ${req.session.user.email}.`);
+                    return res.status(403).json({ 
+                        error: "Limite de cortesia atingido.", 
+                        message: `Você já utilizou seus ${graceSermonsLimit} sermões de cortesia. Para continuar, por favor, renove sua assinatura.`, 
+                        renewal_url: "https://casadopregador.com/pv/montador3anual" 
+                    });
+                }
+                await updateGraceSermons(customer.email, sermonsUsed + 1, currentMonth);
+                hasAccess = true;
+            }
+
+            if (!hasAccess) {
+                console.log(`[Acesso Negado] Assinatura expirada para ${req.session.user.email}.`);
+                return res.status(403).json({ error: "Acesso negado.", message: "Sua assinatura expirou.", renewal_url: "https://casadopregador.com/pv/montador3anual" });
+            }
+
+            console.log(`[Acesso Concedido] Gerando sermão para ${req.session.user.email}.`);
+            const { topic, audience, sermonType, duration } = req.session.sermonData;
+            const promptConfig = getPromptConfig(sermonType, duration);
+            const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '').trim();
+            const cleanAudience = audience.replace(/^[A-Z]\)\s*/, '').trim();
+            const prompt = `Gere um sermão do tipo ${cleanSermonType} para um público de ${cleanAudience} sobre o tema "${topic}". ${promptConfig.structure}`;
+            
+            console.log(`[OpenAI] Enviando requisição para ${req.session.user.email}. Modelo: ${promptConfig.model}`);
+            const data = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+                body: JSON.stringify({
+                    model: promptConfig.model,
+                    messages: [{ role: "user", content: prompt }],
+                    max_tokens: promptConfig.max_tokens,
+                    temperature: promptConfig.temperature,
+                }),
+            });
+
+            console.log(`[OpenAI] Resposta recebida para ${req.session.user.email}.`);
+            await logSermonActivity({
+                user_email: req.session.user.email, sermon_topic: topic, sermon_audience: audience,
+                sermon_type: sermonType, sermon_duration: duration, model_used: promptConfig.model, prompt_instruction: promptConfig.structure
+            });
+
+            delete req.session.sermonData;
+            res.json({ sermon: data.choices[0].message.content });
+        }
+    } catch (error) {
+        console.error("[Erro na API /api/next-step]", error);
+        return res.status(500).json({ error: `Ocorreu um erro interno no servidor ao processar sua solicitação.` });
+    }
+});
+
+
+// --- 6. INICIALIZAÇÃO DO SERVIDOR ---
+app.listen(port, () => {
+    console.log(`🚀 Servidor rodando com sucesso na porta ${port}`);
+});
