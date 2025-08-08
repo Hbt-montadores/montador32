@@ -1,3 +1,5 @@
+/* public/style.css - Versão Definitiva Consolidada */
+
 /* Estilos gerais */
 body {
     font-family: Arial, sans-serif;
@@ -23,19 +25,18 @@ h1 {
     margin-bottom: 30px;
 }
 
-/* Container do formulário */
-#form-container, #options-container, #login-container { /* Adicionado #login-container aqui */
+/* Container principal (usado em login.html e app.html) */
+#form-container, #options-container, #login-container, .container {
     background-color: #FFFFFF;
     padding: 30px;
     border-radius: 15px;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-    max-width: 500px;
+    max-width: 700px; /* Aumentado para acomodar melhor o app */
     margin: 0 auto;
-    text-align: left;
 }
 
 /* Rótulo do campo de tema */
-.input-label {
+.input-label, #question {
     font-size: 1.5em;
     font-weight: bold;
     margin-bottom: 10px;
@@ -43,20 +44,20 @@ h1 {
     color: #0D47A1;
 }
 
-/* Campo de entrada */
-.input-field {
-    width: calc(100% - 4px); /* Ajustar largura para alinhar com o fundo branco */
+/* Campo de entrada de texto (tema do sermão) */
+.input-field, #user-input {
+    width: calc(100% - 24px);
     padding: 15px;
     margin-bottom: 20px;
     border: 2px solid #0D47A1;
     border-radius: 8px;
-    font-size: 1.2em;
+    font-size: 1.2em; /* RESTAURADO: Tamanho original do campo */
     color: #0D47A1;
-    box-sizing: border-box; /* Garante que a borda faça parte do tamanho total */
+    box-sizing: border-box;
 }
 
 /* Botões gerais */
-button {
+button, .option-button {
     background-color: #1565C0;
     color: #fff;
     padding: 15px;
@@ -69,21 +70,22 @@ button {
     display: block;
 }
 
-button:hover {
+button:hover, .option-button:hover {
     background-color: #1E88E5;
 }
 
-/* Tela de carregamento com spinner */
-.loading-screen {
-    font-size: 1.6em;
-    color: #1565C0;
-    margin-top: 50px;
+/* Tela de carregamento */
+#loading {
     display: flex;
     flex-direction: column;
     align-items: center;
+    font-size: 1.6em;
+    color: #1565C0;
+    margin-top: 50px;
 }
 
-.spinner {
+/* RESTAURADO: Spinner circular */
+.loader, .spinner {
     border: 8px solid #E3F2FD;
     border-top: 8px solid #1565C0;
     border-radius: 50%;
@@ -98,8 +100,9 @@ button:hover {
     100% { transform: rotate(360deg); }
 }
 
-/* Sermão gerado */
-.sermon-content {
+/* Conteúdo do sermão gerado */
+#sermon-result {
+    text-align: left;
     white-space: normal;
     line-height: 1.8;
     font-size: 1.5em;
@@ -110,69 +113,38 @@ button:hover {
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
     margin: 20px auto;
     max-width: 800px;
-    text-align: left;
 }
 
-/* Estilos para o campo de senha grande */
-.password-input-large {
-    font-size: 3em !important; /* Tamanho da fonte bem grande */
-    text-align: center; /* Centralizar o texto dentro do campo */
-    padding: 20px 10px !important; /* Mais padding vertical */
-    letter-spacing: 0.1em; /* Espaçamento entre os caracteres para melhor visualização */
-    height: auto !important; /* Ajustar altura automaticamente */
-}
-
-/* Mensagem de erro (se ainda for usada no frontend, mas no caso atual, o backend envia uma página) */
-.error-message {
-    color: #D32F2F; /* Cor vermelha para erro */
-    background-color: #FFCDD2; /* Fundo vermelho claro */
-    border: 1px solid #D32F2F;
-    padding: 10px;
-    border-radius: 5px;
-    margin-top: 15px;
-    text-align: center;
-}
-
-/* --- Estilos para os Novos Botões de Ação e Telas --- */
-
-.top-right-actions {
-    position: fixed;
-    top: 10px;
-    right: 10px;
-    z-index: 1000;
-}
-
-.bottom-right-actions {
-    position: fixed;
-    bottom: 10px;
-    right: 10px;
-    z-index: 1000;
-}
-
-.install-button {
+/* RESTAURADO: Botão de Instalação (baseado no style.css antigo) */
+#install-button, .install-button {
     padding: 8px 12px;
     font-size: 0.9em;
-    background-color: #4CAF50; /* Um verde para a ação de instalar */
+    background-color: #4CAF50; /* Verde para a ação de instalar */
     color: white;
     border: none;
     border-radius: 5px;
     cursor: pointer;
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    width: auto; /* Garante que o botão não ocupe a largura toda */
+    margin-left: 10px;
 }
 
+/* RESTAURADO: Botão/Link de Sair */
 .logout-link {
     font-size: 0.9em;
-    color: white; /* --- SUA MUDANÇA AQUI --- */
+    color: white;
     background-color: rgba(13, 71, 161, 0.7); /* Fundo azul escuro semi-transparente */
     padding: 8px 12px;
     border-radius: 5px;
     text-decoration: none;
+    margin-left: 10px;
 }
 
 .logout-link:hover {
     background-color: rgba(211, 47, 47, 0.9); /* Fica vermelho ao passar o mouse */
 }
 
+/* Container da tela de boas-vindas */
 .welcome-container {
     display: flex;
     flex-direction: column;
@@ -198,4 +170,44 @@ button:hover {
     padding: 20px 40px;
     font-weight: bold;
     width: auto;
+}
+
+/* Header do app.html */
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 15px;
+    margin-bottom: 25px;
+}
+.app-header h1 {
+    margin: 0;
+    font-size: 1.8em;
+}
+.header-actions {
+    display: flex;
+    align-items: center;
+}
+
+/* Ações do sermão (Salvar, Novo) */
+.sermon-actions {
+    text-align: center;
+    margin-top: 20px;
+}
+.sermon-actions button {
+    width: auto;
+    padding: 12px 20px;
+    margin: 0 10px;
+}
+
+/* Container de Erro */
+#error-container {
+    padding: 30px;
+    background-color: #fff3f3;
+    border: 1px solid #d32f2f;
+    border-radius: 8px;
+}
+#error-container h2 {
+    color: #d32f2f;
 }
