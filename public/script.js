@@ -1,4 +1,4 @@
-// public/script.js - Versão Final com Textos dos Botões Corrigidos
+// public/script.js - Versão Final com Geração de PDF Corrigida
 
 // ===================================================================
 // SEÇÃO 1: LOGGING DE ERROS DO CLIENTE E SERVICE WORKER
@@ -205,13 +205,11 @@ function generateSermon(userResponse) {
   .then(data => {
       if (data.sermon) {
           const formattedSermon = data.sermon.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
-          
-          // CORREÇÃO 3: Textos dos botões alterados
           elements.sermonResult.innerHTML = `
               <h2>Seu Sermão está Pronto!</h2>
               <div class="sermon-content">${formattedSermon}</div>
               <div class="sermon-actions">
-                <button onclick="saveAsTxt()">Salvar</button>
+                <button onclick="saveAsPdf()">Salvar</button>
                 <button onclick="startNewSermon()">Novo</button>
               </div>`;
           elements.sermonResult.style.display = 'block';
@@ -220,21 +218,79 @@ function generateSermon(userResponse) {
   .catch(handleFetchError);
 }
 
-function saveAsTxt() {
+// CORREÇÃO DEFINITIVA: Função para salvar como PDF
+function saveAsPdf() {
   const sermonContent = document.querySelector('.sermon-content');
-  if (sermonContent) {
-    const textToSave = sermonContent.innerText;
-    const blob = new Blob([textToSave], { type: 'text/plain;charset=utf-8' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'meu_sermao.txt';
+  if (!sermonContent) {
+    logErrorToServer('error', 'Elemento .sermon-content não encontrado para salvar PDF.');
+    return;
+  }
+  
+  try {
+    // Acessa a biblioteca jsPDF através do objeto window
+    const { jsPDF } = window.jspdf;
     
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    logErrorToServer('info', 'Usuário salvou o sermão como .txt');
-  } else {
-    logErrorToServer('error', 'Falha ao encontrar .sermon-content para salvar como .txt');
+    // Cria uma nova instância do documento PDF
+    const doc = new jsPDF({
+      orientation: 'p',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    // Pega o conteúdo HTML, incluindo as tags <strong> e <br>
+    const htmlContent = sermonContent.innerHTML;
+
+    // Define as margens
+    const margin = 15;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const usableWidth = pageWidth - (margin * 2);
+
+    // Converte o HTML para texto, preservando a estrutura
+    const textLines = htmlContent
+      .replace(/<strong>(.*?)<\/strong>/g, 'NEG:${'$1'}:NEG') // Marca o negrito
+      .split('<br>');
+
+    let y = margin; // Posição vertical inicial
+
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(12);
+
+    textLines.forEach(line => {
+      // Divide a linha em segmentos normais e em negrito
+      const segments = line.split(/NEG:|:NEG/);
+      let isBold = false;
+      
+      segments.forEach(segment => {
+        if (!segment) return; // Pula segmentos vazios
+
+        // Alterna o estilo da fonte
+        doc.setFont('Helvetica', isBold ? 'bold' : 'normal');
+        
+        // Quebra a linha do segmento se ele for muito longo
+        const splitText = doc.splitTextToSize(segment, usableWidth);
+        
+        splitText.forEach(textLine => {
+          // Verifica se precisa de uma nova página
+          if (y + 6 > pageHeight - margin) {
+            doc.addPage();
+            y = margin;
+          }
+          doc.text(textLine, margin, y);
+          y += 6; // Move para a próxima linha (6mm ~ fonte 12)
+        });
+
+        isBold = !isBold; // Alterna para o próximo segmento
+      });
+    });
+
+    // Salva o arquivo
+    doc.save('meu_sermao.pdf');
+    logErrorToServer('info', 'Usuário salvou o sermão como .pdf');
+
+  } catch (error) {
+    console.error('Erro ao gerar PDF:', error);
+    logErrorToServer('error', `Falha ao gerar PDF: ${error.message}`);
+    alert('Ocorreu um erro ao gerar o PDF. A funcionalidade pode não ser compatível com seu navegador. Tente salvar o texto manualmente.');
   }
 }
