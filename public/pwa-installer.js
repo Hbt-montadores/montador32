@@ -1,21 +1,18 @@
-// public/pwa-installer.js - Versão 2 (Comunicação via Classe CSS)
-// Este script centraliza a lógica de instalação do PWA.
+// public/pwa-installer.js - Versão 3 (Comunicação via Objeto Window)
 
-let deferredPrompt; // Guarda o evento para ser usado mais tarde
+// A variável deferredPrompt agora será anexada ao objeto 'window'
+// para ser acessível por outros scripts na mesma página.
 
-// Ouve o evento que o navegador dispara quando o app é instalável
 window.addEventListener('beforeinstallprompt', (e) => {
   console.log('Evento "beforeinstallprompt" capturado.');
-  // Previne que o mini-infobar padrão do navegador apareça
   e.preventDefault();
-  // Guarda o evento
-  deferredPrompt = e;
+  
+  // Anexa o evento ao objeto window para torná-lo global
+  window.deferredPrompt = e;
 
-  // SINALIZA PARA OS OUTROS SCRIPTS QUE O APP É INSTALÁVEL
-  // Adiciona a classe 'installable' ao body da página.
+  // Adiciona uma classe ao body para que o CSS ou outros scripts possam reagir
   document.body.classList.add('installable');
 
-  // Procura por QUALQUER botão com o id 'install-button' na página e o torna visível
   const installButton = document.getElementById('install-button');
   if (installButton) {
     installButton.style.display = 'block';
