@@ -1,4 +1,4 @@
-/* public/style.css - Versão Definitiva Consolidada */
+/* public/style.css - Versão Final com Ajustes Visuais */
 
 /* Estilos gerais */
 body {
@@ -31,7 +31,7 @@ h1 {
     padding: 30px;
     border-radius: 15px;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-    max-width: 700px; /* Aumentado para acomodar melhor o app */
+    max-width: 700px;
     margin: 0 auto;
 }
 
@@ -51,12 +51,12 @@ h1 {
     margin-bottom: 20px;
     border: 2px solid #0D47A1;
     border-radius: 8px;
-    font-size: 1.2em; /* RESTAURADO: Tamanho original do campo */
+    font-size: 1.2em;
     color: #0D47A1;
     box-sizing: border-box;
 }
 
-/* Botões gerais */
+/* Botões gerais (Opções e Próximo Passo) */
 button, .option-button {
     background-color: #1565C0;
     color: #fff;
@@ -79,12 +79,14 @@ button:hover, .option-button:hover {
     display: flex;
     flex-direction: column;
     align-items: center;
+    /* CORREÇÃO 1: Centraliza o spinner verticalmente */
+    justify-content: center; 
     font-size: 1.6em;
     color: #1565C0;
     margin-top: 50px;
 }
 
-/* RESTAURADO: Spinner circular */
+/* Spinner circular */
 .loader, .spinner {
     border: 8px solid #E3F2FD;
     border-top: 8px solid #1565C0;
@@ -115,25 +117,25 @@ button:hover, .option-button:hover {
     max-width: 800px;
 }
 
-/* RESTAURADO: Botão de Instalação (baseado no style.css antigo) */
+/* Botão de Instalação (baseado no style.css antigo) */
 #install-button, .install-button {
     padding: 8px 12px;
     font-size: 0.9em;
-    background-color: #4CAF50; /* Verde para a ação de instalar */
+    background-color: #4CAF50;
     color: white;
     border: none;
     border-radius: 5px;
     cursor: pointer;
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-    width: auto; /* Garante que o botão não ocupe a largura toda */
+    width: auto;
     margin-left: 10px;
 }
 
-/* RESTAURADO: Botão/Link de Sair */
+/* Botão/Link de Sair */
 .logout-link {
     font-size: 0.9em;
     color: white;
-    background-color: rgba(13, 71, 161, 0.7); /* Fundo azul escuro semi-transparente */
+    background-color: rgba(13, 71, 161, 0.7);
     padding: 8px 12px;
     border-radius: 5px;
     text-decoration: none;
@@ -141,7 +143,7 @@ button:hover, .option-button:hover {
 }
 
 .logout-link:hover {
-    background-color: rgba(211, 47, 47, 0.9); /* Fica vermelho ao passar o mouse */
+    background-color: rgba(211, 47, 47, 0.9);
 }
 
 /* Container da tela de boas-vindas */
@@ -153,24 +155,9 @@ button:hover, .option-button:hover {
     height: 80vh;
     text-align: center;
 }
-
-.welcome-container h1 {
-    font-size: 2.5em;
-    margin-bottom: 20px;
-}
-
-.welcome-container p {
-    font-size: 1.2em;
-    max-width: 500px;
-    margin-bottom: 40px;
-}
-
-.welcome-container .start-button {
-    font-size: 1.8em;
-    padding: 20px 40px;
-    font-weight: bold;
-    width: auto;
-}
+.welcome-container h1 { font-size: 2.5em; margin-bottom: 20px; }
+.welcome-container p { font-size: 1.2em; max-width: 500px; margin-bottom: 40px; }
+.welcome-container .start-button { font-size: 1.8em; padding: 20px 40px; font-weight: bold; width: auto; }
 
 /* Header do app.html */
 .app-header {
@@ -181,24 +168,22 @@ button:hover, .option-button:hover {
     padding-bottom: 15px;
     margin-bottom: 25px;
 }
-.app-header h1 {
-    margin: 0;
-    font-size: 1.8em;
-}
-.header-actions {
-    display: flex;
-    align-items: center;
-}
+.app-header h1 { margin: 0; font-size: 1.8em; }
+.header-actions { display: flex; align-items: center; }
 
 /* Ações do sermão (Salvar, Novo) */
 .sermon-actions {
     text-align: center;
     margin-top: 20px;
 }
+
+/* CORREÇÃO 2: Estilos para os botões finais menores e espaçados */
 .sermon-actions button {
-    width: auto;
-    padding: 12px 20px;
-    margin: 0 10px;
+    width: auto; /* Largura automática baseada no conteúdo */
+    font-size: 1em; /* Fonte menor */
+    padding: 12px 25px; /* Padding ajustado */
+    margin: 0 10px; /* Margem para espaçamento */
+    display: inline-block; /* Alinha os botões na mesma linha */
 }
 
 /* Container de Erro */
