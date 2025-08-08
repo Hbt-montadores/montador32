@@ -1,4 +1,4 @@
-// public/script.js - Versão Final com Geração de PDF Corrigida
+// public/script.js - Versão Final com Lógica de Instalação Defensiva
 
 // ===================================================================
 // SEÇÃO 1: LOGGING DE ERROS DO CLIENTE E SERVICE WORKER
@@ -68,6 +68,33 @@ window.addEventListener('load', () => {
         sermonResult: document.getElementById('sermon-result'),
         errorContainer: document.getElementById('error-container')
     };
+    
+    // CORREÇÃO: Lógica de instalação agora é mais robusta e defensiva.
+    const installButton = document.getElementById('install-button');
+
+    // Só executa a lógica de instalação se o botão realmente existir na página.
+    if (installButton) {
+        // Verifica periodicamente se o app se tornou instalável
+        setInterval(() => {
+            if (document.body.classList.contains('installable')) {
+                installButton.style.display = 'block';
+            }
+        }, 1000);
+
+        // Adiciona a lógica de clique
+        installButton.addEventListener('click', async () => {
+            if (window.deferredPrompt) {
+                window.deferredPrompt.prompt();
+                const { outcome } = await window.deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    installButton.style.display = 'none';
+                    document.body.classList.remove('installable');
+                }
+                window.deferredPrompt = null;
+            }
+        });
+    }
+
     startNewSermon();
   }
 });
@@ -218,7 +245,6 @@ function generateSermon(userResponse) {
   .catch(handleFetchError);
 }
 
-// CORREÇÃO DEFINITIVA: Função para salvar como PDF
 function saveAsPdf() {
   const sermonContent = document.querySelector('.sermon-content');
   if (!sermonContent) {
@@ -227,64 +253,48 @@ function saveAsPdf() {
   }
   
   try {
-    // Acessa a biblioteca jsPDF através do objeto window
     const { jsPDF } = window.jspdf;
-    
-    // Cria uma nova instância do documento PDF
     const doc = new jsPDF({
       orientation: 'p',
       unit: 'mm',
       format: 'a4'
     });
 
-    // Pega o conteúdo HTML, incluindo as tags <strong> e <br>
     const htmlContent = sermonContent.innerHTML;
-
-    // Define as margens
     const margin = 15;
     const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
     const usableWidth = pageWidth - (margin * 2);
 
-    // Converte o HTML para texto, preservando a estrutura
     const textLines = htmlContent
-      .replace(/<strong>(.*?)<\/strong>/g, 'NEG:${'$1'}:NEG') // Marca o negrito
+      .replace(/<strong>(.*?)<\/strong>/g, 'NEG:${'$1'}:NEG')
       .split('<br>');
 
-    let y = margin; // Posição vertical inicial
+    let y = margin;
 
     doc.setFont('Helvetica', 'normal');
     doc.setFontSize(12);
 
     textLines.forEach(line => {
-      // Divide a linha em segmentos normais e em negrito
       const segments = line.split(/NEG:|:NEG/);
       let isBold = false;
       
       segments.forEach(segment => {
-        if (!segment) return; // Pula segmentos vazios
-
-        // Alterna o estilo da fonte
+        if (!segment) return;
         doc.setFont('Helvetica', isBold ? 'bold' : 'normal');
-        
-        // Quebra a linha do segmento se ele for muito longo
         const splitText = doc.splitTextToSize(segment, usableWidth);
         
         splitText.forEach(textLine => {
-          // Verifica se precisa de uma nova página
-          if (y + 6 > pageHeight - margin) {
+          if (y + 6 > doc.internal.pageSize.getHeight() - margin) {
             doc.addPage();
             y = margin;
           }
           doc.text(textLine, margin, y);
-          y += 6; // Move para a próxima linha (6mm ~ fonte 12)
+          y += 6;
         });
-
-        isBold = !isBold; // Alterna para o próximo segmento
+        isBold = !isBold;
       });
     });
 
-    // Salva o arquivo
     doc.save('meu_sermao.pdf');
     logErrorToServer('info', 'Usuário salvou o sermão como .pdf');
 
