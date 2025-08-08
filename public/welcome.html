@@ -7,7 +7,6 @@
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="/manifest.json">
     
-    <!-- Link para o script de instalação centralizado -->
     <script src="pwa-installer.js" defer></script>
 </head>
 <body>
@@ -23,57 +22,36 @@
     </div>
 
     <script>
-        // CORREÇÃO COMPLETA DA LÓGICA DE INSTALAÇÃO E REDIRECIONAMENTO
+        // Lógica final e corrigida para instalação e redirecionamento
 
         const startButton = document.getElementById('start-button');
-        let isInstallable = false;
 
-        // Função para redirecionar o usuário para a aplicação principal
-        function goToApp() {
-            window.location.href = '/app';
-        }
-
-        // Função para atualizar a aparência e o estado do botão
         function updateButtonState() {
-            // A variável 'deferredPrompt' é definida pelo pwa-installer.js
+            // Agora verificamos window.deferredPrompt, que é preenchido pelo pwa-installer.js
             if (window.deferredPrompt) {
-                isInstallable = true;
                 startButton.innerText = 'Instalar e Começar';
-            } else {
-                isInstallable = false;
-                startButton.innerText = 'Começar a Usar';
             }
         }
         
-        // Ouve o evento 'load' para garantir que tudo foi carregado
         window.addEventListener('load', () => {
-          // O pwa-installer.js já capturou o evento, então podemos verificar seu estado.
-          // Damos um pequeno tempo para garantir que o script tenha rodado.
           setTimeout(updateButtonState, 200);
         });
 
-        // Lógica de clique do botão
         startButton.addEventListener('click', async () => {
-            // Se o app não for instalável, simplesmente redireciona
-            if (!isInstallable || !window.deferredPrompt) {
-                goToApp();
-                return;
+            // Se o app for instalável, primeiro mostra o prompt
+            if (window.deferredPrompt) {
+                window.deferredPrompt.prompt();
+                
+                // Aguarda a escolha do usuário antes de continuar
+                const { outcome } = await window.deferredPrompt.userChoice;
+                
+                console.log(`Resultado da instalação: ${outcome}`);
+                
+                window.deferredPrompt = null; // Limpa a referência
             }
-
-            // Se for instalável, primeiro mostra o prompt
-            window.deferredPrompt.prompt();
             
-            // Aguarda a escolha do usuário. O código só continua DEPOIS que o pop-up for fechado.
-            const { outcome } = await window.deferredPrompt.userChoice;
-            
-            console.log(`Resultado da instalação: ${outcome}`);
-            
-            // Limpa a referência para que o prompt não seja mostrado novamente
-            window.deferredPrompt = null;
-            isInstallable = false;
-            
-            // AGORA, após tudo ter sido resolvido, redireciona o usuário.
-            goToApp();
+            // Sempre redireciona para o app após a tentativa de instalação (ou se não houver prompt)
+            window.location.href = '/app';
         });
     </script>
 </body>
