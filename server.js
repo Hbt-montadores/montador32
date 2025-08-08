@@ -536,6 +536,18 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
     } catch (error) { console.error("[Erro geral /api/next-step]", error); return res.status(500).json({ error: `Erro interno.` }); }
 });
 
+// ROTA PARA LOGGING DE ERROS DO FRONT-END
+app.post("/api/log-error", (req, res) => {
+    // Tenta obter o e-mail do usuário da sessão, se ele estiver logado
+    const userEmail = req.session && req.session.user ? req.session.user.email : 'Visitante';
+    const { level, message } = req.body;
+
+    // Registra o erro nos logs do Render, associando-o ao usuário
+    console.error(`[FRONT-END ERROR][Usuário: ${userEmail}][${level.toUpperCase()}]: ${message}`);
+
+    res.status(200).send();
+});
+
 app.listen(port, () => {
     console.log(`🚀 Servidor rodando na porta ${port}`);
 });
