@@ -1,4 +1,4 @@
-// public/script.js - Versão Final com Lógica de Instalação Defensiva
+// public/script.js - Versão Final Simplificada (Sem lógica PWA)
 
 // ===================================================================
 // SEÇÃO 1: LOGGING DE ERROS DO CLIENTE E SERVICE WORKER
@@ -69,32 +69,7 @@ window.addEventListener('load', () => {
         errorContainer: document.getElementById('error-container')
     };
     
-    // CORREÇÃO: Lógica de instalação agora é mais robusta e defensiva.
-    const installButton = document.getElementById('install-button');
-
-    // Só executa a lógica de instalação se o botão realmente existir na página.
-    if (installButton) {
-        // Verifica periodicamente se o app se tornou instalável
-        setInterval(() => {
-            if (document.body.classList.contains('installable')) {
-                installButton.style.display = 'block';
-            }
-        }, 1000);
-
-        // Adiciona a lógica de clique
-        installButton.addEventListener('click', async () => {
-            if (window.deferredPrompt) {
-                window.deferredPrompt.prompt();
-                const { outcome } = await window.deferredPrompt.userChoice;
-                if (outcome === 'accepted') {
-                    installButton.style.display = 'none';
-                    document.body.classList.remove('installable');
-                }
-                window.deferredPrompt = null;
-            }
-        });
-    }
-
+    // A função de inicialização agora não tem mais nenhuma lógica de PWA.
     startNewSermon();
   }
 });
@@ -262,8 +237,7 @@ function saveAsPdf() {
 
     const htmlContent = sermonContent.innerHTML;
     const margin = 15;
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const usableWidth = pageWidth - (margin * 2);
+    const usableWidth = doc.internal.pageSize.getWidth() - (margin * 2);
 
     const textLines = htmlContent
       .replace(/<strong>(.*?)<\/strong>/g, 'NEG:${'$1'}:NEG')
