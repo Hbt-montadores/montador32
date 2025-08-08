@@ -1,4 +1,4 @@
-// public/script.js - Versão Final (limpa, sem botão de instalar persistente)
+// public/script.js - Versão Final com Textos dos Botões Corrigidos
 
 // ===================================================================
 // SEÇÃO 1: LOGGING DE ERROS DO CLIENTE E SERVICE WORKER
@@ -205,12 +205,14 @@ function generateSermon(userResponse) {
   .then(data => {
       if (data.sermon) {
           const formattedSermon = data.sermon.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+          
+          // CORREÇÃO 3: Textos dos botões alterados
           elements.sermonResult.innerHTML = `
               <h2>Seu Sermão está Pronto!</h2>
               <div class="sermon-content">${formattedSermon}</div>
               <div class="sermon-actions">
-                <button onclick="saveAsTxt()">Salvar como .txt</button>
-                <button onclick="startNewSermon()">Criar Novo Sermão</button>
+                <button onclick="saveAsTxt()">Salvar</button>
+                <button onclick="startNewSermon()">Novo</button>
               </div>`;
           elements.sermonResult.style.display = 'block';
       } else { throw new Error('Resposta final inválida do servidor.'); }
