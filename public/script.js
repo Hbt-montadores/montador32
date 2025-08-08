@@ -1,135 +1,110 @@
-// script.js - Versão 12.0 (Final com Correção de Inicialização)
+// script.js - Versão 12.2 (Final com Logging de Erros no Servidor)
 
-// 1. REGISTRO DO SERVICE WORKER (PARA FUNCIONALIDADE PWA)
+// ===================================================================
+// NOVA SEÇÃO: LOGGING DE ERROS DO CLIENT-SIDE
+// ===================================================================
+
+/**
+ * Envia uma mensagem de erro para o servidor para que possa ser registrada nos logs.
+ * @param {string} level - O nível do erro (ex: 'error', 'info').
+ * @param {string} message - A mensagem de erro detalhada.
+ */
+function logErrorToServer(level, message) {
+  try {
+    navigator.sendBeacon('/api/log-error', JSON.stringify({ level, message }));
+  } catch (e) {
+    // Fallback para fetch se sendBeacon não for suportado
+    fetch('/api/log-error', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ level, message }),
+      keepalive: true
+    }).catch(console.error);
+  }
+}
+
+/**
+ * "Rede de Segurança": Captura qualquer erro de JavaScript não tratado na página.
+ */
+window.onerror = function(message, source, lineno, colno, error) {
+  const errorMessage = `Erro: ${message} no arquivo ${source}, linha ${lineno}, coluna ${colno}. Stack: ${error ? error.stack : 'N/A'}`;
+  logErrorToServer('error', errorMessage);
+  return false; // Permite que o erro também apareça no console do navegador para depuração local.
+};
+
+// ===================================================================
+// FIM DA NOVA SEÇÃO
+// ===================================================================
+
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js')
-      .then(registration => {
-        console.log('Service Worker registrado com sucesso:', registration);
-      })
-      .catch(error => {
-        console.error('Falha ao registrar Service Worker:', error);
-      });
+      .then(reg => console.log('Service Worker registrado.'))
+      .catch(err => logErrorToServer('error', `Falha ao registrar Service Worker: ${err.message}`));
   });
 }
 
-// 2. ESTADO DA APLICAÇÃO
 let currentStep = 1;
+let elements;
 
-// 3. INICIALIZAÇÃO CORRIGIDA
-// O evento 'load' espera que TUDO na página esteja pronto (incluindo imagens, etc.)
-// o que garante que todos os elementos HTML já existem.
 window.addEventListener('load', () => {
-  // Apenas inicia o sermão se o container principal existir (ou seja, estamos em app.html)
   if (document.getElementById('step-container')) {
+    elements = {
+        stepContainer: document.getElementById('step-container'),
+        question: document.getElementById('question'),
+        inputArea: document.getElementById('input-area'),
+        userInput: document.getElementById('user-input'),
+        options: document.getElementById('options'),
+        loading: document.getElementById('loading'),
+        sermonResult: document.getElementById('sermonResult')
+    };
     startNewSermon();
   }
 });
 
-
-// 4. FUNÇÕES DE MANIPULAÇÃO DA INTERFACE
-
-/**
- * Reseta a interface para o estado inicial, pronto para criar um novo sermão.
- */
 function startNewSermon() {
   currentStep = 1;
-
-  const stepContainer = document.getElementById('step-container');
-  const sermonResult = document.getElementById('sermonResult');
-  const loadingDiv = document.getElementById('loading');
-  
-  // Verificação de segurança para garantir que os elementos existem antes de manipulá-los
-  if (!stepContainer || !sermonResult || !loadingDiv) {
-    console.error("Elementos essenciais da interface não foram encontrados. Verifique o app.html.");
-    return;
-  }
-
-  stepContainer.innerHTML = `
-    <h2 id="question">Qual será o tema do seu sermão?</h2>
-    <div class="input-area">
-      <input type="text" id="user-input" placeholder="Ex: A Parábola do Filho Pródigo" onkeydown="if(event.key==='Enter') nextStep()">
-      <button onclick="nextStep()">Próximo</button>
-    </div>
-    <div id="options"></div>
-  `;
-
-  stepContainer.style.display = 'block';
-  sermonResult.style.display = 'none';
-  sermonResult.innerHTML = '';
-  loadingDiv.style.display = 'none';
+  if (!elements || !elements.question) return;
+  elements.question.innerText = 'Qual será o tema do seu sermão?';
+  elements.userInput.value = '';
+  elements.options.innerHTML = '';
+  elements.inputArea.style.display = 'block';
+  elements.options.style.display = 'none';
+  elements.stepContainer.style.display = 'block';
+  elements.sermonResult.style.display = 'none';
+  elements.loading.style.display = 'none';
 }
 
-/**
- * Exibe a pergunta e as opções recebidas do servidor.
- * @param {object} data - O objeto contendo a pergunta e as opções.
- */
-function displayQuestion(data) {
-  document.getElementById('question').innerText = data.question;
-  
-  const inputArea = document.querySelector('.input-area');
-  if(inputArea) inputArea.style.display = 'none';
-
-  const optionsContainer = document.getElementById('options');
-  optionsContainer.innerHTML = ''; 
-  data.options.forEach(option => {
-    const button = document.createElement('button');
-    button.className = 'option-button';
-    button.innerText = option;
-    button.onclick = () => nextStep(option);
-    optionsContainer.appendChild(button);
-  });
-}
-
-/**
- * Lida com todos os tipos de erro de fetch, exibindo a mensagem apropriada.
- * @param {object} error - O objeto de erro capturado.
- */
 function handleFetchError(error) {
-    console.error('Erro na comunicação com o servidor:', error);
-    const loadingDiv = document.getElementById('loading');
-    const sermonResult = document.getElementById('sermonResult');
-    const stepContainer = document.getElementById('step-container');
+    const errorMessage = `Erro na comunicação com o servidor: ${JSON.stringify(error)}`;
+    logErrorToServer('error', errorMessage);
 
-    if (loadingDiv) loadingDiv.style.display = 'none';
-    if (stepContainer) stepContainer.style.display = 'none';
+    elements.loading.style.display = 'none';
+    elements.stepContainer.style.display = 'none';
     
     if (error && error.error === "Limite de cortesia atingido.") {
-        sermonResult.innerHTML = `
+        elements.sermonResult.innerHTML = `
             <h2>Atenção!</h2>
             <p style="font-size: 1.2em; color: #D32F2F; margin-bottom: 20px;">${error.message}</p>
             <a href="${error.renewal_url}" target="_blank" class="action-button" style="background-color: #4CAF50; color: white; padding: 15px 30px; text-decoration: none; font-size: 1.5em; border-radius: 8px; display: inline-block; margin-top: 10px;">LIBERAR ACESSO</a>
-            <br><br>
-            <button onclick="startNewSermon()" style="margin-top: 20px;">Voltar ao Início</button>
-        `;
+            <br><br><button onclick="startNewSermon()" style="margin-top: 20px;">Voltar ao Início</button>`;
     } else {
-        sermonResult.innerHTML = `
+        elements.sermonResult.innerHTML = `
             <h2>Ocorreu um Erro</h2>
-            <p>Não foi possível continuar. Por favor, verifique sua conexão com a internet e tente novamente.</p>
-            <button onclick="startNewSermon()">Tentar Novamente</button>
-        `;
+            <p>Não foi possível continuar. Por favor, verifique sua conexão e tente novamente.</p>
+            <button onclick="startNewSermon()">Tentar Novamente</button>`;
     }
-    
-    sermonResult.style.display = 'block';
+    elements.sermonResult.style.display = 'block';
 }
 
-
-// 5. FUNÇÕES DE COMUNICAÇÃO COM O SERVIDOR
-
-/**
- * Processa a resposta do usuário e avança para a próxima etapa.
- * @param {string} [response] - A resposta do usuário (opcional, usado para cliques em botões).
- */
 function nextStep(response) {
   let userResponse = response;
   
   if (!userResponse) {
-    const userInputField = document.getElementById('user-input');
-    if (userInputField && userInputField.value.trim() !== '') {
-      userResponse = userInputField.value.trim();
-    } else {
-      return; 
-    }
+    if (elements.userInput && elements.userInput.value.trim() !== '') {
+      userResponse = elements.userInput.value.trim();
+    } else { return; }
   }
 
   if (currentStep === 4) {
@@ -143,34 +118,36 @@ function nextStep(response) {
     body: JSON.stringify({ step: currentStep, userResponse: userResponse })
   })
   .then(response => {
-    if (!response.ok) {
-        return response.json().then(errorData => {
-            throw errorData || new Error('Erro de servidor'); 
-        });
-    }
+    if (!response.ok) { return response.json().then(err => { throw err; }); }
     return response.json();
   })
   .then(data => {
     if (data.question) {
       currentStep = data.step;
       displayQuestion(data);
-    } else {
-      throw new Error('Resposta inválida do servidor.');
-    }
+    } else { throw new Error('Resposta inválida do servidor.'); }
   })
   .catch(handleFetchError);
 }
 
-/**
- * Envia todos os dados coletados para o back-end para gerar o sermão final.
- * @param {string} userResponse - A resposta da última etapa (duração).
- */
-function generateSermon(userResponse) {
-  const loadingDiv = document.getElementById('loading');
-  const stepContainer = document.getElementById('step-container');
+function displayQuestion(data) {
+  elements.question.innerText = data.question;
+  elements.inputArea.style.display = 'none';
+  
+  elements.options.innerHTML = ''; 
+  data.options.forEach(option => {
+    const button = document.createElement('button');
+    button.className = 'option-button';
+    button.innerText = option;
+    button.onclick = () => nextStep(option);
+    elements.options.appendChild(button);
+  });
+  elements.options.style.display = 'block';
+}
 
-  stepContainer.style.display = 'none';
-  loadingDiv.style.display = 'block';
+function generateSermon(userResponse) {
+  elements.stepContainer.style.display = 'none';
+  elements.loading.style.display = 'block';
 
   fetch('/api/next-step', {
     method: 'POST',
@@ -178,49 +155,30 @@ function generateSermon(userResponse) {
     body: JSON.stringify({ step: 4, userResponse: userResponse })
   })
   .then(response => {
-      if (!response.ok) {
-          return response.json().then(errorData => {
-              throw errorData || new Error('Erro de servidor');
-          });
-      }
+      if (!response.ok) { return response.json().then(err => { throw err; }); }
       return response.json();
   })
   .then(data => {
       if (data.sermon) {
-          const sermonResult = document.getElementById('sermonResult');
           const formattedSermon = data.sermon.replace(/\n/g, '<br>');
-          sermonResult.innerHTML = `
+          elements.sermonResult.innerHTML = `
               <h2>Seu Sermão:</h2>
               <div class="sermon-content">${formattedSermon}</div>
               <button onclick="copySermon()">Copiar Sermão</button>
-              <button onclick="startNewSermon()">Criar Novo Sermão</button>
-          `;
-          sermonResult.style.display = 'block';
-          loadingDiv.style.display = 'none';
-      } else {
-          throw new Error('Resposta inválida do servidor.');
-      }
+              <button onclick="startNewSermon()">Criar Novo Sermão</button>`;
+          elements.sermonResult.style.display = 'block';
+          elements.loading.style.display = 'none';
+      } else { throw new Error('Resposta inválida do servidor.'); }
   })
   .catch(handleFetchError);
 }
 
-
-// 6. FUNÇÕES AUXILIARES
-
-/**
- * Copia o conteúdo do sermão gerado para a área de transferência.
- */
 function copySermon() {
   const sermonContent = document.querySelector('.sermon-content');
   if (sermonContent) {
     const textToCopy = sermonContent.innerHTML.replace(/<br\s*[\/]?>/gi, "\n");
     navigator.clipboard.writeText(textToCopy)
-      .then(() => {
-        alert('Sermão copiado para a área de transferência!');
-      })
-      .catch(err => {
-        console.error('Erro ao copiar sermão: ', err);
-        alert('Não foi possível copiar o texto.');
-      });
+      .then(() => alert('Sermão copiado para a área de transferência!'))
+      .catch(err => logErrorToServer('error', `Falha ao copiar texto: ${err.message}`));
   }
 }
