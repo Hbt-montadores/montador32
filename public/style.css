@@ -1,4 +1,4 @@
-/* public/style.css - Versão Final com Ajustes Visuais */
+/* public/style.css - Versão Final com Ajustes Visuais Finais */
 
 /* Estilos gerais */
 body {
@@ -74,16 +74,24 @@ button:hover, .option-button:hover {
     background-color: #1E88E5;
 }
 
-/* Tela de carregamento */
+/* CORREÇÃO 1: Tela de carregamento agora é um overlay de tela inteira */
 #loading {
+    position: fixed; /* Ocupa a tela inteira, sobrepondo o conteúdo */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(227, 242, 253, 0.8); /* Fundo semi-transparente */
+    z-index: 9999; /* Garante que fique na frente de tudo */
+    
     display: flex;
     flex-direction: column;
     align-items: center;
-    /* CORREÇÃO 1: Centraliza o spinner verticalmente */
-    justify-content: center; 
+    justify-content: center; /* Centraliza verticalmente e horizontalmente */
+    
     font-size: 1.6em;
     color: #1565C0;
-    margin-top: 50px;
+    /* margin-top removido, pois a centralização é automática */
 }
 
 /* Spinner circular */
@@ -117,7 +125,7 @@ button:hover, .option-button:hover {
     max-width: 800px;
 }
 
-/* Botão de Instalação (baseado no style.css antigo) */
+/* Botão de Instalação */
 #install-button, .install-button {
     padding: 8px 12px;
     font-size: 0.9em;
@@ -179,11 +187,11 @@ button:hover, .option-button:hover {
 
 /* CORREÇÃO 2: Estilos para os botões finais menores e espaçados */
 .sermon-actions button {
-    width: auto; /* Largura automática baseada no conteúdo */
-    font-size: 1em; /* Fonte menor */
-    padding: 12px 25px; /* Padding ajustado */
-    margin: 0 10px; /* Margem para espaçamento */
-    display: inline-block; /* Alinha os botões na mesma linha */
+    width: auto;
+    font-size: 1em;
+    padding: 12px 25px;
+    margin: 0 10px;
+    display: inline-block;
 }
 
 /* Container de Erro */
