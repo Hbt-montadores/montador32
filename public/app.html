@@ -1,62 +1,244 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Montador de Sermões 3.2</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="manifest" href="/manifest.json">
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/service-worker.js')
-            .then(registration => {
-              console.log('Service Worker registrado com sucesso.');
-            })
-            .catch(error => {
-              console.log('Falha ao registrar o Service Worker:', error);
-            });
-        });
-      }
-    </script>
+    <title>Montador de Sermões</title>
+    
+    <!-- Informações para PWA (Progressive Web App) -->
+    <meta name="theme-color" content="#2196F3">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="images/icons/icon-192x192.png">
+
+    <style>
+        :root {
+            --primary-color: #0D47A1;
+            --secondary-color: #1976D2;
+            --accent-color: #4CAF50;
+            --light-bg: #E3F2FD;
+            --text-color: #333;
+            --card-bg: #FFFFFF;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--light-bg);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 700px;
+            background-color: var(--card-bg);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 15px;
+        }
+
+        .app-header h1 {
+            color: var(--primary-color);
+            margin: 0;
+            font-size: 1.8em;
+        }
+
+        .header-actions button, .header-actions a {
+            background: none;
+            border: 1px solid var(--primary-color);
+            color: var(--primary-color);
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            text-decoration: none;
+            margin-left: 10px;
+            transition: background-color 0.2s, color 0.2s;
+        }
+        
+        .header-actions button:hover, .header-actions a:hover {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        #question {
+            font-size: 1.5em;
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            min-height: 50px;
+        }
+
+        #input-area input {
+            width: calc(100% - 24px);
+            padding: 15px;
+            font-size: 1.2em;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            transition: border-color 0.3s;
+        }
+
+        #input-area input:focus {
+            border-color: var(--secondary-color);
+            outline: none;
+        }
+
+        #input-area button, .option-button {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.2em;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            transition: background-color 0.3s;
+        }
+
+        #input-area button:hover {
+            background-color: #45a049;
+        }
+
+        #options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .option-button {
+            background-color: var(--secondary-color);
+        }
+        
+        .option-button:hover {
+            background-color: var(--primary-color);
+        }
+
+        #loading {
+            padding: 50px 0;
+            font-size: 1.2em;
+        }
+        
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid var(--secondary-color);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #sermon-result {
+            text-align: left;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #fafafa;
+            line-height: 1.6;
+            margin-top: 20px;
+        }
+        
+        #sermon-result h2 {
+            text-align: center;
+        }
+
+        .sermon-content {
+            margin-bottom: 25px;
+        }
+        
+        .sermon-actions {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .sermon-actions button {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 12px 20px;
+            font-size: 1em;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 0 10px;
+        }
+        
+        #error-container {
+            padding: 30px;
+            background-color: #fff3f3;
+            border: 1px solid #d32f2f;
+            border-radius: 8px;
+        }
+        
+        #error-container h2 {
+            color: #d32f2f;
+        }
+
+    </style>
 </head>
 <body>
-    <div id="top-right-actions" class="top-right-actions">
-        <button id="install-button" class="install-button" style="display: none;">Atalho</button>
+
+    <div class="container">
+        <header class="app-header">
+            <h1>Montador</h1>
+            <div class="header-actions">
+                <button id="install-button" style="display: none;">Instalar App</button>
+                <a href="/logout">Sair</a>
+            </div>
+        </header>
+
+        <main>
+            <!-- Tela de Geração de Sermão (passo a passo) -->
+            <div id="step-container" style="display: none;">
+                <h2 id="question">Qual será o tema do seu sermão?</h2>
+                
+                <div id="input-area">
+                    <input type="text" id="user-input" placeholder="Ex: A Parábola do Filho Pródigo">
+                    <button onclick="nextStep()">Próximo Passo</button>
+                </div>
+
+                <div id="options" style="display: none;"></div>
+            </div>
+
+            <!-- Tela de Carregamento -->
+            <div id="loading" style="display: none;">
+                <div class="loader"></div>
+                <p id="loading-text">Gerando seu sermão, por favor aguarde...</p>
+            </div>
+
+            <!-- Tela de Resultado do Sermão -->
+            <div id="sermon-result" style="display: none;">
+                <!-- O conteúdo do sermão será injetado aqui pelo script.js -->
+            </div>
+            
+            <!-- Tela de Erro -->
+            <div id="error-container" style="display: none;">
+                <!-- Mensagens de erro serão injetadas aqui pelo script.js -->
+            </div>
+
+        </main>
     </div>
-    
-    <div id="bottom-right-actions" class="bottom-right-actions">
-        <a href="/logout" class="logout-link">Desconectar</a>
-    </div>
 
-    <header>
-        <img src="https://cdn.glitch.global/db74bd9b-d683-421c-9223-f55b917c9dce/logo.png?v=1734385573934" alt="Logo do Montador de Sermões 3.2" class="logo">
-    </header>
-
-    <h1>Montador de Sermões 3.2</h1>
-
-    <div id="form-container">
-        <label for="topic" class="input-label">Digite o tema do sermão:</label>
-        <input type="text" id="topic" class="input-field" placeholder="Ex: O Cego de Jericó">
-        <button id="next-step-button">Próximo</button>
-    </div>
-
-    <div id="options-container" style="display: none;"></div>
-
-    <div id="loading-screen" class="loading-screen" style="display: none;">
-        <div class="spinner"></div>
-        <p id="loading-text">Gerando sermão, por favor aguarde...</p>
-    </div>
-
-    <div id="sermon-result" class="sermon-content" style="display: none;"></div>
-    <button id="restart-button" class="restart-button" style="display: none;">Gerar Novo Sermão</button>
-    <button id="print-button" class="print-button" style="display: none;">Imprimir Sermão</button>
-
-    <div id="error-container" class="error-content" style="display: none;">
-        <p>Não foi possível gerar o sermão no momento. Por favor, tente novamente mais tarde.</p>
-        <button id="home-button">Início</button>
-    </div>
-
+    <!-- Script principal da aplicação -->
     <script src="script.js"></script>
 </body>
 </html>
