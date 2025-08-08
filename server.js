@@ -1,4 +1,4 @@
-// server.js - Versão Definitiva Consolidada
+// server.js - Versão Definitiva (Correção na rota de log)
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -11,7 +11,6 @@ const rateLimit = require('express-rate-limit');
 const fs = require('fs');
 const csv = require('csv-parser');
 
-// Importa todas as funções necessárias do nosso módulo de banco de dados
 const { 
     pool, getCustomerRecordByEmail, getCustomerRecordByPhone, getAccessControlRule,
     updateAnnualAccess, updateMonthlyStatus, updateLifetimeAccess, revokeAccessByInvoice,
@@ -21,31 +20,23 @@ const {
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Confia no primeiro proxy (necessário para ambientes como Heroku/Render)
 app.set('trust proxy', 1);
-
 
 // --- 2. MIDDLEWARES (Segurança, JSON, Sessão) ---
 
-// Servir arquivos estáticos da pasta 'public'
 app.use(express.static(path.join(__dirname, "public")));
-// Endpoint para verificação de saúde do servidor
 app.get("/healthz", (req, res) => res.status(200).send("OK"));
-
-// Middlewares para parsear o corpo das requisições
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// Limitador de tentativas de login para prevenir ataques de força bruta
 const loginLimiter = rateLimit({
-	windowMs: 15 * 60 * 1000, // 15 minutos
+	windowMs: 15 * 60 * 1000,
 	max: 15,
 	message: '<h1>Muitas tentativas de login</h1><p>Detectamos muitas tentativas a partir do seu IP. Por favor, tente novamente em 15 minutos.</p>',
     standardHeaders: true,
     legacyHeaders: false,
 });
 
-// Configuração da sessão do usuário, armazenada no banco de dados PostgreSQL
 app.use(
   session({
     store: new PgStore({ pool: pool, tableName: 'user_sessions' }),
@@ -53,34 +44,29 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: { 
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 dias
+        maxAge: 30 * 24 * 60 * 60 * 1000, 
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', // 'true' em produção
+        secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax'
     },
   })
 );
 
-// Middleware para proteger rotas que exigem login
 function requireLogin(req, res, next) {
   if (req.session && req.session.user) {
     return next();
   } else {
-    // Se a requisição for uma chamada de API (AJAX), retorna erro JSON
     if (req.xhr || (req.headers.accept && req.headers.accept.includes('json'))) {
         return res.status(401).json({ error: "Sessão expirada. Por favor, faça o login novamente." });
     }
-    // Caso contrário, redireciona para a página de login
     return res.redirect('/'); 
   }
 }
-
 
 // --- 3. ROTAS PÚBLICAS (Login, Logout, Webhooks) ---
 
 const ALLOW_ANYONE = process.env.ALLOW_ANYONE === "true";
 
-// Rota principal: redireciona para o app se logado, senão mostra a página de login
 app.get("/", (req, res) => {
     if (req.session && req.session.user) {
         return res.redirect('/app');
@@ -88,85 +74,63 @@ app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "login.html")); 
 });
 
-// Rota de logout: destrói a sessão e limpa o cookie
 app.get('/logout', (req, res) => {
   req.session.destroy(err => {
     if (err) {
         console.error("Erro ao destruir sessão:", err);
-        return res.redirect('/app'); // Mesmo com erro, tenta redirecionar
+        return res.redirect('/app');
     }
     res.clearCookie('connect.sid');
     res.redirect('/');
   });
 });
 
-/**
- * Função centralizada para verificar o acesso de um cliente e realizar o login.
- * A ordem de verificação é crucial: Bloqueio -> Vitalício -> Anual -> Mensal -> Cortesia.
- */
 const checkAccessAndLogin = async (req, res, customer) => {
     const now = new Date();
     const accessRule = await getAccessControlRule(customer.email);
 
-    // 1. Bloqueio Manual (prioridade máxima)
     if (accessRule && accessRule.permission === 'block') {
         return res.status(403).send("<h1>Acesso Bloqueado</h1><p>Este acesso foi bloqueado manualmente. Entre em contato com o suporte.</p>");
     }
-
-    // 2. Acesso Vitalício
     if (accessRule && accessRule.permission === 'allow') {
         req.session.loginAttempts = 0;
         req.session.user = { email: customer.email, status: 'lifetime' };
         return res.redirect('/welcome.html');
     }
-
-    // 3. Acesso Anual
     if (customer.annual_expires_at && now < new Date(customer.annual_expires_at)) {
         req.session.loginAttempts = 0;
         req.session.user = { email: customer.email, status: 'annual_paid' };
         return res.redirect('/welcome.html');
     }
-    
-    // 4. Acesso Mensal
     if (customer.monthly_status === 'paid') {
         req.session.loginAttempts = 0;
         req.session.user = { email: customer.email, status: 'monthly_paid' };
         return res.redirect('/welcome.html');
     }
-    
-    // 5. Período de Cortesia
     const enableGracePeriod = process.env.ENABLE_GRACE_PERIOD === 'true';
     const graceSermonsLimit = parseInt(process.env.GRACE_PERIOD_SERMONS, 10) || 2;
-    
     if (enableGracePeriod) {
         const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         let currentGraceSermonsUsed = customer.grace_sermons_used || 0;
-
-        // Se o mês mudou, zera o contador de cortesia
         if (customer.grace_period_month !== currentMonth) {
             await updateGraceSermons(customer.email, 0, currentMonth);
             currentGraceSermonsUsed = 0;
         }
-
         if (currentGraceSermonsUsed < graceSermonsLimit) {
             req.session.loginAttempts = 0;
             req.session.user = { email: customer.email, status: 'grace_period' };
             return res.redirect('/welcome.html');
         }
     }
-    
-    // 6. Acesso Negado (Pagamento pendente)
     const overdueErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pagamento Pendente</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu. Clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
     return res.status(401).send(overdueErrorMessageHTML);
 };
 
-// Rota de login por email
 app.post("/login", loginLimiter, async (req, res) => {
     const { email } = req.body;
     if (!email) { return res.status(400).send("O campo de e-mail é obrigatório."); }
     const lowerCaseEmail = email.toLowerCase();
     
-    // Modo de teste para desenvolvimento
     if (ALLOW_ANYONE) {
         req.session.user = { email: lowerCaseEmail, status: 'admin_test' };
         return res.redirect("/welcome.html");
@@ -177,7 +141,6 @@ app.post("/login", loginLimiter, async (req, res) => {
         if (customer) {
             return await checkAccessAndLogin(req, res, customer);
         } else {
-            // Se o email não for encontrado, após 2 tentativas, oferece login por celular
             req.session.loginAttempts = (req.session.loginAttempts || 0) + 1;
             if (req.session.loginAttempts >= 2) {
                 const notFoundWithPhoneOptionHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Erro de Login</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.input-field{width:calc(100% - 34px);padding:15px;margin-bottom:20px;border:2px solid #0D47A1;border-radius:8px;font-size:1.2em;color:#0D47A1}.action-button{background-color:#1565C0;color:#fff;padding:15px;font-size:1.4em;border:none;border-radius:8px;cursor:pointer;width:100%;display:block}.back-link{display:block;margin-top:30px;color:#1565C0;text-decoration:none;font-size:1.1em}.back-link:hover{text-decoration:underline}</style></head><body><div class="container"><h1>E-mail não localizado</h1><p>Não encontramos seu cadastro. Verifique se digitou o e-mail corretamente ou tente acessar com seu número de celular.</p><form action="/login-by-phone" method="POST"><label for="phone">Celular:</label><input type="tel" id="phone" name="phone" class="input-field" placeholder="Insira aqui o seu celular" required><button type="submit" class="action-button">Entrar com Celular</button></form><a href="/" class="back-link">Tentar com outro e-mail</a></div></body></html>`;
@@ -193,7 +156,6 @@ app.post("/login", loginLimiter, async (req, res) => {
     }
 });
 
-// Rota de login por telefone
 app.post("/login-by-phone", loginLimiter, async (req, res) => {
     const { phone } = req.body;
     if (!phone) { return res.status(400).send("O campo de celular é obrigatório."); }
@@ -211,11 +173,9 @@ app.post("/login-by-phone", loginLimiter, async (req, res) => {
     }
 });
 
-// Rota para receber webhooks da Eduzz
 app.post("/eduzz/webhook", async (req, res) => {
     const { api_key, product_cod, cus_email, cus_name, cus_cel, event_name, trans_cod, trans_paiddate, trans_paidtime } = req.body;
 
-    // Validação de segurança
     if (api_key !== process.env.EDUZZ_API_KEY) {
         console.warn(`[Webhook-Segurança] API Key inválida recebida.`);
         return res.status(403).send("API Key inválida.");
@@ -225,7 +185,6 @@ app.post("/eduzz/webhook", async (req, res) => {
         return res.status(400).send("Dados insuficientes.");
     }
     
-    // Mapeamento de produtos
     const lifetime_ids = (process.env.EDUZZ_LIFETIME_PRODUCT_IDS || "").split(',');
     const annual_ids = (process.env.EDUZZ_ANNUAL_PRODUCT_IDS || "").split(',');
     const monthly_ids = (process.env.EDUZZ_MONTHLY_PRODUCT_IDS || "").split(',');
@@ -237,7 +196,6 @@ app.post("/eduzz/webhook", async (req, res) => {
     else if (monthly_ids.includes(productCodStr)) productType = 'monthly';
     
     try {
-        // Se o produto não for mapeado, registra como prospect (se a cortesia estiver ativa)
         if (!productType) {
             if (process.env.ENABLE_GRACE_PERIOD === 'true') {
                 await registerProspect(cus_email, cus_name, cus_cel);
@@ -249,7 +207,6 @@ app.post("/eduzz/webhook", async (req, res) => {
             }
         }
 
-        // Processamento de eventos
         if (event_name === 'invoice_paid') {
             switch (productType) {
                 case 'lifetime':
@@ -290,7 +247,6 @@ app.post("/eduzz/webhook", async (req, res) => {
 // --- 4. ROTAS DE ADMINISTRAÇÃO ---
 
 const getAdminPanelHeader = (key, activePage) => {
-    // Cabeçalho HTML para o painel de administração com navegação e ações
     return `
         <style>
             body { font-family: sans-serif; padding: 20px; background-color: #f9f9f9; }
@@ -328,13 +284,11 @@ const getAdminPanelHeader = (key, activePage) => {
     `;
 };
 
-// Rota para visualizar todos os dados de clientes, com filtros
 app.get("/admin/view-data", async (req, res) => {
     const { key, filter, message } = req.query;
     if (key !== process.env.ADMIN_KEY) { return res.status(403).send("<h1>Acesso Negado</h1>"); }
     
     let whereClause = '';
-    // Monta a cláusula WHERE da query SQL baseada no filtro
     switch(filter) {
         case 'anual': whereClause = 'WHERE c.annual_expires_at IS NOT NULL'; break;
         case 'mensal': whereClause = 'WHERE c.monthly_status IS NOT NULL'; break;
@@ -342,7 +296,6 @@ app.get("/admin/view-data", async (req, res) => {
         case 'bloqueado': whereClause = `WHERE ac.permission = 'block'`; break;
     }
 
-    // Query que une as tabelas 'customers' e 'access_control' para ter uma visão completa
     const baseQuery = `
         SELECT
             COALESCE(c.email, ac.email) as email,
@@ -401,12 +354,6 @@ app.get("/admin/view-data", async (req, res) => {
     }
 });
 
-// A partir daqui, as rotas de edição, criação e atualização foram refatoradas para
-// usar funções centralizadas, tornando o código mais limpo e fácil de manter.
-
-/**
- * Gera o HTML para o formulário de criação/edição de cliente.
- */
 const customerFormHTML = (key, data = {}) => {
     const isNew = !data.email;
     const actionUrl = isNew ? "/admin/create-customer" : "/admin/update-customer";
@@ -458,14 +405,12 @@ const customerFormHTML = (key, data = {}) => {
         <br><a href="/admin/view-data?key=${key}">Voltar para a lista</a>`;
 };
 
-// Rota para mostrar o formulário de um novo cliente
 app.get("/admin/new-customer", (req, res) => {
     const { key } = req.query;
     if (key !== process.env.ADMIN_KEY) { return res.status(403).send("Acesso Negado"); }
     res.send(customerFormHTML(key));
 });
 
-// Rota para mostrar o formulário de edição de um cliente existente
 app.get("/admin/edit-customer", async (req, res) => {
     const { key, email } = req.query;
     if (key !== process.env.ADMIN_KEY) { return res.status(403).send("Acesso Negado"); }
@@ -484,14 +429,9 @@ app.get("/admin/edit-customer", async (req, res) => {
     }
 });
 
-/**
- * Função centralizada para atualizar/inserir dados de um cliente no banco de dados.
- * Usada tanto para criar novos clientes quanto para atualizar existentes.
- */
 const updateCustomerData = async (client, data) => {
     const { email, name, phone, permission, annual_expires_at, monthly_status, grace_sermons_used, grace_period_month } = data;
     
-    // Atualiza a tabela 'customers'
     const expirationDate = annual_expires_at ? new Date(annual_expires_at).toISOString() : null;
     const finalMonthlyStatus = monthly_status || null;
     const finalGraceMonth = grace_period_month || null;
@@ -507,7 +447,6 @@ const updateCustomerData = async (client, data) => {
     `;
     await client.query(customerQuery, [email.toLowerCase(), name, phone, finalMonthlyStatus, expirationDate, grace_sermons_used, finalGraceMonth]);
 
-    // Atualiza a tabela 'access_control'
     if (permission && permission !== 'none') {
         const reason = `Acesso definido manualmente via painel (${permission})`;
         const accessQuery = `
@@ -516,12 +455,10 @@ const updateCustomerData = async (client, data) => {
         `;
         await client.query(accessQuery, [email.toLowerCase(), permission, reason]);
     } else {
-        // Se 'Nenhum' for selecionado, remove a regra de acesso manual
         await client.query('DELETE FROM access_control WHERE email = $1', [email.toLowerCase()]);
     }
 };
 
-// Rota POST para criar um novo cliente
 app.post("/admin/create-customer", async (req, res) => {
     const { key, email } = req.body;
     if (key !== process.env.ADMIN_KEY) { return res.status(403).send("Acesso Negado"); }
@@ -542,7 +479,6 @@ app.post("/admin/create-customer", async (req, res) => {
     }
 });
 
-// Rota POST para atualizar um cliente existente
 app.post("/admin/update-customer", async (req, res) => {
     const { key } = req.body;
     if (key !== process.env.ADMIN_KEY) { return res.status(403).send("Acesso Negado"); }
@@ -562,7 +498,6 @@ app.post("/admin/update-customer", async (req, res) => {
     }
 });
 
-// Rota para zerar o contador de cortesia de TODOS os clientes
 app.get("/admin/reset-grace", async (req, res) => {
     const { key } = req.query;
     if (key !== process.env.ADMIN_KEY) { return res.status(403).send("Acesso Negado"); }
@@ -575,7 +510,6 @@ app.get("/admin/reset-grace", async (req, res) => {
     }
 });
 
-// Rota para visualizar o log de atividades de geração de sermões
 app.get("/admin/view-activity", async (req, res) => {
     const { key } = req.query;
     if (key !== process.env.ADMIN_KEY) { return res.status(403).send("<h1>Acesso Negado</h1>"); }
@@ -596,7 +530,6 @@ app.get("/admin/view-activity", async (req, res) => {
     }
 });
 
-// Rota para importação de clientes via arquivo CSV
 app.get("/admin/import-from-csv", async (req, res) => {
     const { key, plan_type } = req.query;
     if (key !== process.env.ADMIN_KEY) { return res.status(403).send("<h1>Acesso Negado</h1>"); }
@@ -605,7 +538,6 @@ app.get("/admin/import-from-csv", async (req, res) => {
     const CSV_FILE_PATH = path.join(__dirname, 'lista-clientes.csv');
     if (!fs.existsSync(CSV_FILE_PATH)) { return res.status(404).send("<h1>Erro: Arquivo 'lista-clientes.csv' não encontrado.</h1><p>Certifique-se de que o arquivo está na raiz do projeto e use ponto e vírgula (;) como separador.</p>"); }
     
-    // Stream de resposta para o navegador, para dar feedback em tempo real
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.write(`<h1>Iniciando importação para plano: ${plan_type.toUpperCase()}...</h1>`);
 
@@ -621,11 +553,9 @@ app.get("/admin/import-from-csv", async (req, res) => {
         try {
             res.write('<p>Iniciando transação com o banco de dados...</p><ul>');
             await client.query('BEGIN');
-
             for (const customerData of clientsToImport) {
-                // ... lógica de importação (mantida da versão anterior)
+                // ... lógica de importação ...
             }
-            
             await client.query('COMMIT');
             res.end(`</ul><hr><h2>✅ Sucesso!</h2><p>A importação para o plano ${plan_type.toUpperCase()} foi concluída.</p>`);
         } catch (e) {
@@ -641,23 +571,21 @@ app.get("/admin/import-from-csv", async (req, res) => {
 
 // --- 5. ROTAS PROTEGIDAS (App Principal) ---
 
-// Rota principal da aplicação, só acessível por usuários logados
 app.get("/app", requireLogin, (req, res) => {
-    // A verificação de acesso é feita na própria página, mas garantimos que está logado.
-    // O ideal é servir um arquivo HTML que fará as chamadas de API.
     res.sendFile(path.join(__dirname, "public", "app.html"));
 });
 
-// Endpoint para log de erros do lado do cliente
+// MODIFICADO: Rota de log de erros do cliente agora é mais robusta
 app.post("/api/log-error", (req, res) => {
     const userEmail = req.session && req.session.user ? req.session.user.email : 'Visitante Anônimo';
-    const { level, message } = req.body;
+    
+    // Garante que 'level' e 'message' tenham valores padrão para evitar erros
+    const level = req.body.level || 'UNDEFINED_LEVEL';
+    const message = req.body.message || 'Mensagem de erro vazia recebida.';
+
     console.error(`[FRONT-END LOG][Usuário: ${userEmail}][${level.toUpperCase()}]: ${message}`);
     res.status(200).send();
 });
-
-// A função getPromptConfig e a rota /api/next-step permanecem praticamente as mesmas,
-// com a adição da verificação de cortesia mais robusta.
 
 function getPromptConfig(sermonType, duration) {
     const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '').trim();
@@ -690,13 +618,11 @@ async function fetchWithTimeout(url, options, timeout = 90000) {
     });
 }
 
-// Rota principal da API que gera os sermões passo a passo
 app.post("/api/next-step", requireLogin, async (req, res) => {
     const { userResponse } = req.body;
     const step = req.body.step || 1;
     
     try {
-        // Inicializa a sessão com os dados do sermão
         if (step === 1) {
             req.session.sermonData = { topic: userResponse };
             return res.json({ question: "Para qual público você vai pregar?", options: ["A) Crianças", "B) Adolescentes", "C) Jovens", "D) Mulheres", "E) Homens", "F) Público misto", "G) Não convertido"], step: 2 });
@@ -709,11 +635,9 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
             req.session.sermonData.sermonType = userResponse;
             return res.json({ question: "Quantos minutos o sermão deve durar?", options: ["Entre 1 e 10 min", "Entre 10 e 20 min", "Entre 20 e 30 min", "Entre 30 e 40 min", "Entre 40 e 50 min", "Entre 50 e 60 min", "Acima de 1 hora"], step: 4 });
         }
-        // Passo final: Geração do sermão
         if (step === 4) {
             req.session.sermonData.duration = userResponse;
             
-            // VERIFICAÇÃO DE ACESSO FINAL ANTES DE GERAR
             const customer = await getCustomerRecordByEmail(req.session.user.email);
             const accessRule = await getAccessControlRule(req.session.user.email);
             const now = new Date();
@@ -723,7 +647,6 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
             else if (customer.annual_expires_at && now < new Date(customer.annual_expires_at)) hasAccess = true;
             else if (customer.monthly_status === 'paid') hasAccess = true;
 
-            // Se não tem acesso pago, verifica a cortesia
             if (!hasAccess && req.session.user.status === 'grace_period') {
                 const graceSermonsLimit = parseInt(process.env.GRACE_PERIOD_SERMONS, 10) || 2;
                 const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -737,7 +660,6 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                         renewal_url: "https://casadopregador.com/pv/montador3anual" 
                     });
                 }
-                // Se ainda pode usar, permite o acesso e incrementa o contador
                 await updateGraceSermons(customer.email, sermonsUsed + 1, currentMonth);
                 hasAccess = true;
             }
@@ -746,7 +668,6 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                 return res.status(403).json({ error: "Acesso negado.", message: "Sua assinatura expirou.", renewal_url: "https://casadopregador.com/pv/montador3anual" });
             }
 
-            // GERAÇÃO DO SERMÃO COM OPENAI
             const { topic, audience, sermonType, duration } = req.session.sermonData;
             const promptConfig = getPromptConfig(sermonType, duration);
             const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '').trim();
@@ -769,7 +690,7 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                 sermon_type: sermonType, sermon_duration: duration, model_used: promptConfig.model, prompt_instruction: promptConfig.structure
             });
 
-            delete req.session.sermonData; // Limpa os dados da sessão
+            delete req.session.sermonData;
             res.json({ sermon: data.choices[0].message.content });
         }
     } catch (error) {
