@@ -1,4 +1,4 @@
-// server.js - Versão de Diagnóstico (Sessão em Memória - COMPLETO)
+// server.js - Versão Final e Permanente
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -37,13 +37,9 @@ const loginLimiter = rateLimit({
     legacyHeaders: false,
 });
 
-// ===================================================================
-// ALTERAÇÃO DE DIAGNÓSTICO
-// A linha 'store' foi comentada para usar o armazenamento de sessão em memória.
-// ===================================================================
 app.use(
   session({
-    // store: new PgStore({ pool: pool, tableName: 'user_sessions' }), // <-- TEMPORARIAMENTE DESABILITADO
+    store: new PgStore({ pool: pool, tableName: 'user_sessions' }),
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
@@ -55,7 +51,6 @@ app.use(
     },
   })
 );
-// ===================================================================
 
 function requireLogin(req, res, next) {
   if (req.session && req.session.user) {
@@ -618,7 +613,7 @@ function getPromptConfig(sermonType, duration) {
             'Entre 20 e 30 min': { structure: 'Siga esta estrutura: 1. Introdução ao tema (um parágrafo curto). 2. Desenvolvimento do tema usando 2 pontos, cada um com um texto bíblico de apoio (um parágrafo curto por ponto). 3. Aplicação (um parágrafo curto). 4. Conclusão (um parágrafo curto).', max_tokens: 1200 },
             'Entre 30 e 40 min': { structure: 'Siga esta estrutura: 1. Introdução ao tema. 2. Primeiro Ponto (com um texto bíblico de apoio). 3. Segundo Ponto (com outro texto bíblico de apoio). 4. Aplicação unificada. 5. Conclusão.', max_tokens: 1900 },
             'Entre 40 e 50 min': { structure: 'Siga esta estrutura: 1. Introdução com ilustração (dois parágrafos curtos). 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico e uma breve explicação (dois parágrafos curtos por ponto). 3. Aplicações práticas (dois parágrafos curtos). 4. Conclusão (dois parágrafos curtos).', max_tokens: 2500 },
-            'Entre 50 e 60 min': { structure: 'Siga esta estrutura: 1. Introdução. 2. Três pontos sobre o tema, cada um desenvolvido com um texto bíblico, breve exegese e uma ilustração. 3. Aplicações para cada ponto. 4. Conclusão com apelo.', max_tokens: 3500 },
+            'Entre 50 e 60 min': { structure: 'Siga esta estrutura: 1. Introdução. 2. Três pontos sobre o tema, cada um com texto, breve exegese e uma ilustração. 3. Aplicações para cada ponto. 4. Conclusão com apelo.', max_tokens: 3500 },
             'Acima de 1 hora': { structure: 'Siga esta estrutura: 1. Introdução. 2. Exploração profunda do tema através de múltiplas passagens bíblicas. 3. Análise teológica e prática. 4. Ilustrações e aplicações robustas. 5. Conclusão e oração.', max_tokens: 5000 }
         }
     };
@@ -651,6 +646,9 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
     const { userResponse } = req.body;
     const step = req.body.step || 1;
     
+    // Log para cada etapa
+    console.log(`[API Next-Step] Usuário [${req.session.user.email}] - Etapa ${step}: ${userResponse}`);
+    
     try {
         if (step === 1) {
             req.session.sermonData = { topic: userResponse };
@@ -680,56 +678,3 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                 const graceSermonsLimit = parseInt(process.env.GRACE_PERIOD_SERMONS, 10) || 2;
                 const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
                 let sermonsUsed = customer.grace_sermons_used || 0;
-                if (customer.grace_period_month !== currentMonth) sermonsUsed = 0;
-
-                if (sermonsUsed >= graceSermonsLimit) {
-                    return res.status(403).json({ 
-                        error: "Limite de cortesia atingido.", 
-                        message: `Você já utilizou seus ${graceSermonsLimit} sermões de cortesia. Para continuar, por favor, renove sua assinatura.`, 
-                        renewal_url: "https://casadopregador.com/pv/montador3anual" 
-                    });
-                }
-                await updateGraceSermons(customer.email, sermonsUsed + 1, currentMonth);
-                hasAccess = true;
-            }
-
-            if (!hasAccess) {
-                return res.status(403).json({ error: "Acesso negado.", message: "Sua assinatura expirou.", renewal_url: "https://casadopregador.com/pv/montador3anual" });
-            }
-
-            const { topic, audience, sermonType, duration } = req.session.sermonData;
-            const promptConfig = getPromptConfig(sermonType, duration);
-            const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '').trim();
-            const cleanAudience = audience.replace(/^[A-Z]\)\s*/, '').trim();
-            const prompt = `Gere um sermão do tipo ${cleanSermonType} para um público de ${cleanAudience} sobre o tema "${topic}". ${promptConfig.structure}`;
-            
-            const data = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-                body: JSON.stringify({
-                    model: promptConfig.model,
-                    messages: [{ role: "user", content: prompt }],
-                    max_tokens: promptConfig.max_tokens,
-                    temperature: promptConfig.temperature,
-                }),
-            });
-
-            await logSermonActivity({
-                user_email: req.session.user.email, sermon_topic: topic, sermon_audience: audience,
-                sermon_type: sermonType, sermon_duration: duration, model_used: promptConfig.model, prompt_instruction: promptConfig.structure
-            });
-
-            delete req.session.sermonData;
-            res.json({ sermon: data.choices[0].message.content });
-        }
-    } catch (error) {
-        console.error("[Erro na API /api/next-step]", error);
-        return res.status(500).json({ error: `Ocorreu um erro interno no servidor ao processar sua solicitação.` });
-    }
-});
-
-
-// --- 6. INICIALIZAÇÃO DO SERVIDOR ---
-app.listen(port, () => {
-    console.log(`🚀 Servidor rodando com sucesso na porta ${port}`);
-});
