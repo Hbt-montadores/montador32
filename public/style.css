@@ -1,4 +1,4 @@
-/* public/style.css - Versão Final com Ajustes Visuais Finais */
+/* public/style.css - Versão Final com Centralização do Spinner Corrigida */
 
 /* Estilos gerais */
 body {
@@ -74,15 +74,15 @@ button:hover, .option-button:hover {
     background-color: #1E88E5;
 }
 
-/* CORREÇÃO 1: Tela de carregamento agora é um overlay de tela inteira */
+/* CORREÇÃO DEFINITIVA: Tela de carregamento agora ocupa a tela inteira E centraliza o conteúdo */
 #loading {
-    position: fixed; /* Ocupa a tela inteira, sobrepondo o conteúdo */
+    position: fixed;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(227, 242, 253, 0.8); /* Fundo semi-transparente */
-    z-index: 9999; /* Garante que fique na frente de tudo */
+    width: 100%; /* Garante que o overlay ocupe toda a largura */
+    height: 100%; /* Garante que o overlay ocupe toda a altura */
+    background-color: rgba(227, 242, 253, 0.8);
+    z-index: 9999;
     
     display: flex;
     flex-direction: column;
@@ -91,7 +91,6 @@ button:hover, .option-button:hover {
     
     font-size: 1.6em;
     color: #1565C0;
-    /* margin-top removido, pois a centralização é automática */
 }
 
 /* Spinner circular */
@@ -185,7 +184,6 @@ button:hover, .option-button:hover {
     margin-top: 20px;
 }
 
-/* CORREÇÃO 2: Estilos para os botões finais menores e espaçados */
 .sermon-actions button {
     width: auto;
     font-size: 1em;
