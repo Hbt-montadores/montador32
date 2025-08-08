@@ -9,7 +9,6 @@
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="images/icons/icon-192x192.png">
 
-    <!-- ADICIONADO: Link para o script de instalação centralizado -->
     <script src="pwa-installer.js" defer></script>
     
     <link rel="stylesheet" href="style.css">
@@ -20,14 +19,12 @@
         <header class="app-header">
             <h1>Montador</h1>
             <div class="header-actions">
-                <!-- ADICIONADO: O botão de instalação persistente, inicialmente escondido -->
                 <button id="install-button" class="install-button" style="display: none;">Instalar App</button>
                 <a href="/logout" class="logout-link">Sair</a>
             </div>
         </header>
 
         <main>
-            <!-- O resto do seu app.html continua o mesmo... -->
             <div id="step-container" style="display: none;">
                 <h2 id="question">Qual será o tema do seu sermão?</h2>
                 <div id="input-area">
@@ -42,12 +39,21 @@
                 <p id="loading-text">Gerando seu sermão, por favor aguarde...</p>
             </div>
 
-            <div id="sermon-result" style="display: none;"></div>
-            <div id="error-container" style="display: none;"></div>
+            <div id="sermon-result" style="display: none;">
+                <!-- O conteúdo do sermão será injetado aqui pelo script.js -->
+            </div>
+            
+            <div id="error-container" style="display: none;">
+                <!-- Mensagens de erro serão injetadas aqui pelo script.js -->
+            </div>
+
         </main>
     </div>
 
-    <!-- O script.js principal da aplicação -->
+    <!-- ADICIONADO: Biblioteca para gerar PDF no navegador -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
+    <!-- Script principal da aplicação -->
     <script src="script.js"></script>
 </body>
 </html>
