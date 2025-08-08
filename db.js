@@ -1,16 +1,24 @@
-// db.js - Versão Final com Correção de Conexão SSL
+// db.js - Versão de Diagnóstico com Logs de Pool
 
 const { Pool } = require('pg');
 
-// CORREÇÃO: Adicionada uma verificação para a configuração de SSL.
-// Em produção (como no Render), DATABASE_URL já inclui a configuração de SSL.
-// Em desenvolvimento local, podemos desabilitá-la se necessário.
 const isProduction = process.env.NODE_ENV === 'production';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isProduction ? { rejectUnauthorized: false } : false
 });
+
+// ===================================================================
+// ADIÇÃO DE DIAGNÓSTICO:
+// Este bloco irá "ouvir" por erros que acontecem no pool de conexões
+// em segundo plano, que normalmente não são mostrados nos logs.
+// ===================================================================
+pool.on('error', (err, client) => {
+  console.error('[ERRO NO POOL DE CONEXÕES PG] Erro inesperado no cliente inativo', err);
+  process.exit(-1); // Encerra o processo para que o Render o reinicie
+});
+// ===================================================================
 
 /**
  * Função auto-executável para inicializar e migrar o banco de dados.
@@ -21,7 +29,6 @@ const pool = new Pool({
     console.log('Verificando e preparando o banco de dados...');
 
     // --- Tabela 'customers' ---
-    // 1. Garante que a tabela base exista.
     await client.query(`
       CREATE TABLE IF NOT EXISTS customers (
         id SERIAL PRIMARY KEY,
@@ -31,12 +38,13 @@ const pool = new Pool({
         monthly_status TEXT,
         annual_expires_at TIMESTAMP WITH TIME ZONE,
         grace_sermons_used INT DEFAULT 0,
-        grace_period_month TEXT, -- Formato 'AAAA-MM'
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        grace_period_month TEXT,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        last_invoice_id TEXT,
+        last_product_id TEXT
       );
     `);
 
-    // 2. MIGRAÇÃO: Adiciona colunas que podem estar faltando em tabelas já existentes.
     await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_invoice_id TEXT;`);
     await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_product_id TEXT;`);
     
@@ -75,20 +83,11 @@ const pool = new Pool({
     // --- Tabela 'user_sessions' ---
     await client.query(`
       CREATE TABLE IF NOT EXISTS "user_sessions" (
-        "sid" varchar NOT NULL COLLATE "default",
-        "sess" json NOT NULL,
-        "expire" timestamp(6) NOT NULL
+        "sid" varchar NOT NULL COLLATE "default", "sess" json NOT NULL, "expire" timestamp(6) NOT NULL
       ) WITH (OIDS=FALSE);
-      
-      DO $$ BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint 
-          WHERE conname = 'session_pkey' AND conrelid = 'user_sessions'::regclass
-        ) THEN
-          ALTER TABLE "user_sessions" ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE;
-        END IF;
-      END; $$;
-
+      DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'session_pkey' AND conrelid = 'user_sessions'::regclass) THEN
+      ALTER TABLE "user_sessions" ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE;
+      END IF; END; $$;
       CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "user_sessions" ("expire");
     `);
     console.log('✔️ Tabela "user_sessions" pronta.');
@@ -97,14 +96,14 @@ const pool = new Pool({
 
   } catch (err) {
     console.error('❌ Erro fatal ao inicializar o banco de dados:', err);
-    process.exit(1); // Interrompe a aplicação se o DB falhar
+    process.exit(1);
   } finally {
     client.release();
   }
 })();
 
 
-// --- FUNÇÕES DE CONSULTA ---
+// --- FUNÇÕES DE CONSULTA, MODIFICAÇÃO E LÓGICA INTERNA ---
 
 async function getCustomerRecordByEmail(email) {
   const { rows } = await pool.query(`SELECT * FROM customers WHERE email = $1`, [email.toLowerCase()]);
@@ -115,7 +114,6 @@ async function getCustomerRecordByPhone(phone) {
   const digitsOnly = (phone || '').replace(/\D/g, '');
   if (digitsOnly.length < 6) return null;
   const lastSixDigits = digitsOnly.slice(-6);
-
   const query = `SELECT * FROM customers WHERE RIGHT(REGEXP_REPLACE(phone, '\\D', '', 'g'), 6) = $1`;
   const { rows } = await pool.query(query, [lastSixDigits]);
   return rows[0] || null;
@@ -125,9 +123,6 @@ async function getAccessControlRule(email) {
     const { rows } = await pool.query(`SELECT * FROM access_control WHERE email = $1`, [email.toLowerCase()]);
     return rows[0] || null;
 }
-
-
-// --- FUNÇÕES DE MODIFICAÇÃO ---
 
 async function updateLifetimeAccess(email, name, phone, invoiceId, productId) {
     const client = await pool.connect();
@@ -155,7 +150,6 @@ async function updateLifetimeAccess(email, name, phone, invoiceId, productId) {
 async function updateAnnualAccess(email, name, phone, invoiceId, paidAt) {
     const expirationDate = new Date(paidAt);
     expirationDate.setDate(expirationDate.getDate() + 365);
-
     await pool.query(
         `INSERT INTO customers (email, name, phone, annual_expires_at, last_invoice_id, updated_at) VALUES ($1, $2, $3, $4, $5, NOW())
          ON CONFLICT (email) DO UPDATE SET name = COALESCE(EXCLUDED.name, customers.name), phone = COALESCE(EXCLUDED.phone, customers.phone), annual_expires_at = EXCLUDED.annual_expires_at, last_invoice_id = EXCLUDED.last_invoice_id, updated_at = NOW()`,
@@ -185,9 +179,6 @@ async function revokeAccessByInvoice(invoiceId, productType) {
     }
 }
 
-
-// --- FUNÇÕES DE LÓGICA INTERNA ---
-
 async function registerProspect(email, name, phone) {
     await pool.query(
         `INSERT INTO customers (email, name, phone, updated_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (email) DO NOTHING`,
@@ -210,7 +201,6 @@ async function logSermonActivity(details) {
         [user_email, sermon_topic, sermon_audience, sermon_type, sermon_duration, model_used, prompt_instruction]
     );
 }
-
 
 module.exports = {
   pool,
