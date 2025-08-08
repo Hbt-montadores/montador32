@@ -1,4 +1,4 @@
-// public/script.js - Versão Definitiva com Correção de Escopo e Log
+// public/script.js - Versão Final com todas as funcionalidades visuais restauradas
 
 // ===================================================================
 // SEÇÃO 1: LOGGING DE ERROS DO CLIENTE E SERVICE WORKER
@@ -6,25 +6,20 @@
 
 /**
  * Envia uma mensagem de erro para o servidor para registro nos logs.
- * @param {string} level - O nível do log (ex: 'error', 'info').
- * @param {string} message - A mensagem de erro detalhada.
  */
 function logErrorToServer(level, message) {
-  // Garante que 'level' e 'message' tenham valores padrão se forem indefinidos.
   const errorLevel = level || 'error';
   const errorMessage = message || 'Mensagem de erro não fornecida.';
-
+  
   try {
-    // sendBeacon é ideal para enviar logs antes de o usuário sair da página
     navigator.sendBeacon('/api/log-error', JSON.stringify({ level: errorLevel, message: errorMessage }));
   } catch (e) {
-    // Fallback para fetch caso sendBeacon não seja suportado
     fetch('/api/log-error', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ level: errorLevel, message: errorMessage }),
-      keepalive: true // Garante que a requisição continue mesmo se a página for fechada
-    }).catch(console.error); // Log local se a API de log falhar
+      keepalive: true
+    }).catch(console.error);
   }
 }
 
@@ -34,7 +29,7 @@ function logErrorToServer(level, message) {
 window.onerror = function(message, source, lineno, colno, error) {
   const errorMessage = `Erro não capturado: ${message} em ${source}:${lineno}:${colno}. Stack: ${error ? error.stack : 'N/A'}`;
   logErrorToServer('error', errorMessage);
-  return false; // Permite que o erro também apareça no console do navegador
+  return false;
 };
 
 // Registra o Service Worker
@@ -56,6 +51,7 @@ let elements = {};
 let loadingInterval;
 let installButton; 
 
+// RESTAURADO: Array com as frases de carregamento para sermões longos
 const longSermonMessages = [
     "Consultando as referências e o contexto bíblico...",
     "Estruturando a espinha dorsal da sua mensagem...",
@@ -78,28 +74,25 @@ window.addEventListener('load', () => {
         userInput: document.getElementById('user-input'),
         options: document.getElementById('options'),
         loading: document.getElementById('loading'),
-        loadingText: document.getElementById('loading-text'),
+        loadingText: document.getElementById('loading-text'), // Necessário para as frases
         sermonResult: document.getElementById('sermon-result'),
         errorContainer: document.getElementById('error-container')
     };
     
     installButton = document.getElementById('install-button');
 
-    // Verifica periodicamente se o app se tornou instalável
-    setInterval(() => {
-        if (document.body.classList.contains('installable') && installButton && installButton.style.display === 'none') {
-            installButton.style.display = 'block';
-        }
-    }, 1000);
-
-    // Adiciona a lógica de clique ao botão de instalação persistente
+    // Verifica se o app é instalável
     if (installButton) {
+        setInterval(() => {
+            if (document.body.classList.contains('installable') && installButton.style.display === 'none') {
+                installButton.style.display = 'block';
+            }
+        }, 1000);
+
         installButton.addEventListener('click', async () => {
-            // A variável 'deferredPrompt' é definida no escopo global pelo 'pwa-installer.js'
             if (window.deferredPrompt) {
                 window.deferredPrompt.prompt();
                 const { outcome } = await window.deferredPrompt.userChoice;
-                logErrorToServer('info', `Resultado da instalação (app.html): ${outcome}`);
                 if (outcome === 'accepted') {
                     installButton.style.display = 'none';
                     document.body.classList.remove('installable');
@@ -113,9 +106,6 @@ window.addEventListener('load', () => {
   }
 });
 
-/**
- * Reseta a aplicação para o estado inicial.
- */
 function startNewSermon() {
   currentStep = 1;
   if (!elements || !elements.question) return;
@@ -134,15 +124,11 @@ function startNewSermon() {
   if (elements.loadingText) elements.loadingText.textContent = "Gerando sermão, por favor aguarde...";
   clearInterval(loadingInterval);
 
-  // Ao resetar, mostra o botão de instalar se a oportunidade ainda existir
   if (installButton && document.body.classList.contains('installable')) {
     installButton.style.display = 'block';
   }
 }
 
-/**
- * Lida com erros de fetch.
- */
 function handleFetchError(error) {
     const errorMessage = `Erro na comunicação com o servidor: ${JSON.stringify(error)}`;
     logErrorToServer('error', errorMessage);
@@ -168,9 +154,6 @@ function handleFetchError(error) {
     elements.errorContainer.style.display = 'block';
 }
 
-/**
- * Avança para o próximo passo do fluxo.
- */
 function nextStep(response) {
   let userResponse = response;
   
@@ -210,9 +193,6 @@ function nextStep(response) {
   .catch(handleFetchError);
 }
 
-/**
- * Exibe a próxima pergunta e as opções.
- */
 function displayQuestion(data) {
   elements.question.innerText = data.question;
   elements.inputArea.style.display = 'none';
@@ -229,18 +209,15 @@ function displayQuestion(data) {
   elements.stepContainer.style.display = 'block';
 }
 
-/**
- * Função final que gera o sermão.
- */
 function generateSermon(userResponse) {
   elements.stepContainer.style.display = 'none';
   elements.loading.style.display = 'block';
 
-  // Esconde o botão de instalar para não poluir a tela do sermão
   if (installButton) {
     installButton.style.display = 'none';
   }
 
+  // RESTAURADO: Lógica para mostrar mensagens de espera para sermões longos
   const longSermonTriggers = ["Entre 40 e 50 min", "Entre 50 e 60 min", "Acima de 1 hora"];
   if (longSermonTriggers.includes(userResponse)) {
     elements.loadingText.textContent = "Você escolheu um sermão mais longo. A preparação pode levar um pouco mais de tempo...";
@@ -284,9 +261,6 @@ function generateSermon(userResponse) {
   .catch(handleFetchError);
 }
 
-/**
- * Salva o sermão como um arquivo de texto (.txt).
- */
 function saveAsTxt() {
   const sermonContent = document.querySelector('.sermon-content');
   if (sermonContent) {
