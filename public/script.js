@@ -1,4 +1,4 @@
-// public/script.js - Versão Final Simplificada (Sem lógica PWA)
+// public/script.js - Versão Final com Correção de Sintaxe no PDF
 
 // ===================================================================
 // SEÇÃO 1: LOGGING DE ERROS DO CLIENTE E SERVICE WORKER
@@ -68,8 +68,6 @@ window.addEventListener('load', () => {
         sermonResult: document.getElementById('sermon-result'),
         errorContainer: document.getElementById('error-container')
     };
-    
-    // A função de inicialização agora não tem mais nenhuma lógica de PWA.
     startNewSermon();
   }
 });
@@ -239,8 +237,9 @@ function saveAsPdf() {
     const margin = 15;
     const usableWidth = doc.internal.pageSize.getWidth() - (margin * 2);
 
+    // CORREÇÃO DE SINTAXE: Removidas as aspas e chaves extras ao redor de $1
     const textLines = htmlContent
-      .replace(/<strong>(.*?)<\/strong>/g, 'NEG:${'$1'}:NEG')
+      .replace(/<strong>(.*?)<\/strong>/g, 'NEG:$1:NEG')
       .split('<br>');
 
     let y = margin;
