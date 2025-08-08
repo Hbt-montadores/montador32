@@ -6,6 +6,9 @@
     <title>Bem-vindo! - Montador de Sermões 3.2</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="/manifest.json">
+    
+    <!-- Link para o script de instalação centralizado -->
+    <script src="pwa-installer.js" defer></script>
 </head>
 <body>
     <header>
@@ -15,38 +18,62 @@
     <div class="welcome-container">
         <h1>Parabéns!</h1>
         <p>Seja bem-vindo ao Montador de Sermões 3.2. Para a melhor experiência, recomendamos instalar o atalho do aplicativo em seu dispositivo.</p>
-        <button id="start-button" class="start-button">Começar</button>
+        
+        <button id="start-button" class="start-button">Começar a Usar</button>
     </div>
 
     <script>
-        let deferredPrompt;
+        // CORREÇÃO COMPLETA DA LÓGICA DE INSTALAÇÃO E REDIRECIONAMENTO
 
-        // 1. Captura o evento de instalação se o PWA ainda não foi instalado
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
+        const startButton = document.getElementById('start-button');
+        let isInstallable = false;
+
+        // Função para redirecionar o usuário para a aplicação principal
+        function goToApp() {
+            window.location.href = '/app';
+        }
+
+        // Função para atualizar a aparência e o estado do botão
+        function updateButtonState() {
+            // A variável 'deferredPrompt' é definida pelo pwa-installer.js
+            if (window.deferredPrompt) {
+                isInstallable = true;
+                startButton.innerText = 'Instalar e Começar';
+            } else {
+                isInstallable = false;
+                startButton.innerText = 'Começar a Usar';
+            }
+        }
+        
+        // Ouve o evento 'load' para garantir que tudo foi carregado
+        window.addEventListener('load', () => {
+          // O pwa-installer.js já capturou o evento, então podemos verificar seu estado.
+          // Damos um pequeno tempo para garantir que o script tenha rodado.
+          setTimeout(updateButtonState, 200);
         });
 
-        // 2. Lógica do botão "Começar"
-        const startButton = document.getElementById('start-button');
+        // Lógica de clique do botão
         startButton.addEventListener('click', async () => {
-            // Marca imediatamente que a tela foi vista para não bloquear o usuário
-            localStorage.setItem('welcomeScreenSeen', 'true');
-
-            // Tenta disparar a instalação do PWA
-            if (deferredPrompt) {
-                deferredPrompt.prompt();
-                const { outcome } = await deferredPrompt.userChoice;
-                if (outcome === 'accepted') {
-                    console.log('Usuário aceitou a instalação do PWA.');
-                } else {
-                    console.log('Usuário recusou a instalação do PWA.');
-                }
-                deferredPrompt = null; // O prompt só pode ser usado uma vez
+            // Se o app não for instalável, simplesmente redireciona
+            if (!isInstallable || !window.deferredPrompt) {
+                goToApp();
+                return;
             }
+
+            // Se for instalável, primeiro mostra o prompt
+            window.deferredPrompt.prompt();
             
-            // Redireciona para o aplicativo principal, independentemente do resultado
-            window.location.href = '/app';
+            // Aguarda a escolha do usuário. O código só continua DEPOIS que o pop-up for fechado.
+            const { outcome } = await window.deferredPrompt.userChoice;
+            
+            console.log(`Resultado da instalação: ${outcome}`);
+            
+            // Limpa a referência para que o prompt não seja mostrado novamente
+            window.deferredPrompt = null;
+            isInstallable = false;
+            
+            // AGORA, após tudo ter sido resolvido, redireciona o usuário.
+            goToApp();
         });
     </script>
 </body>
