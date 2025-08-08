@@ -1,8 +1,7 @@
-// db.js - Versão Definitiva Consolidada
+// db.js - Versão Definitiva com Migração de Colunas
 
 const { Pool } = require('pg');
 
-// Configuração da conexão com o banco de dados a partir da variável de ambiente
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -11,15 +10,15 @@ const pool = new Pool({
 });
 
 /**
- * Função auto-executável para inicializar o banco de dados.
- * Ela garante que todas as tabelas e colunas necessárias existam.
+ * Função auto-executável para inicializar e migrar o banco de dados.
  */
 (async () => {
   const client = await pool.connect();
   try {
     console.log('Verificando e preparando o banco de dados...');
 
-    // Tabela 'customers': Armazena os dados principais dos clientes e status de planos
+    // --- Tabela 'customers' ---
+    // 1. Garante que a tabela base exista.
     await client.query(`
       CREATE TABLE IF NOT EXISTS customers (
         id SERIAL PRIMARY KEY,
@@ -30,13 +29,18 @@ const pool = new Pool({
         annual_expires_at TIMESTAMP WITH TIME ZONE,
         grace_sermons_used INT DEFAULT 0,
         grace_period_month TEXT, -- Formato 'AAAA-MM'
-        last_invoice_id TEXT,
-        last_product_id TEXT,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
     `);
 
-    // Tabela 'access_control': Para regras manuais de acesso (vitalício, bloqueio)
+    // 2. MIGRAÇÃO: Adiciona colunas que podem estar faltando em tabelas já existentes.
+    // Este é o passo crucial que corrige o erro.
+    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_invoice_id TEXT;`);
+    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_product_id TEXT;`);
+    
+    console.log('✔️ Tabela "customers" pronta e migrada.');
+
+    // --- Tabela 'access_control' ---
     await client.query(`
       CREATE TABLE IF NOT EXISTS access_control (
         id SERIAL PRIMARY KEY,
@@ -48,8 +52,9 @@ const pool = new Pool({
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
     `);
+    console.log('✔️ Tabela "access_control" pronta.');
 
-    // Tabela 'activity_log': Registra a geração de sermões pelos usuários
+    // --- Tabela 'activity_log' ---
     await client.query(`
       CREATE TABLE IF NOT EXISTS activity_log (
         id SERIAL PRIMARY KEY,
@@ -63,8 +68,9 @@ const pool = new Pool({
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
     `);
+    console.log('✔️ Tabela "activity_log" pronta.');
 
-    // Tabela 'user_sessions': Para armazenar as sessões de login dos usuários
+    // --- Tabela 'user_sessions' ---
     await client.query(`
       CREATE TABLE IF NOT EXISTS "user_sessions" (
         "sid" varchar NOT NULL COLLATE "default",
@@ -83,37 +89,26 @@ const pool = new Pool({
 
       CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "user_sessions" ("expire");
     `);
+    console.log('✔️ Tabela "user_sessions" pronta.');
 
-    console.log('✔️  Tabelas do banco de dados prontas e verificadas.');
+    console.log('✅ Banco de dados pronto para uso.');
 
   } catch (err) {
     console.error('❌ Erro fatal ao inicializar o banco de dados:', err);
-    // Em caso de erro na inicialização, o processo deve ser interrompido
-    process.exit(1);
+    process.exit(1); // Interrompe a aplicação se o DB falhar
   } finally {
     client.release();
   }
 })();
 
 
-// --- FUNÇÕES DE CONSULTA ---
+// --- FUNÇÕES DE CONSULTA (Sem alterações) ---
 
-/**
- * Busca o registro de um cliente pelo email.
- * @param {string} email - O email do cliente.
- * @returns {Promise<object|null>} O registro do cliente ou nulo.
- */
 async function getCustomerRecordByEmail(email) {
   const { rows } = await pool.query(`SELECT * FROM customers WHERE email = $1`, [email.toLowerCase()]);
   return rows[0] || null;
 }
 
-/**
- * Busca o registro de um cliente pelo número de telefone.
- * Normaliza o telefone para buscar apenas pelos últimos 6 dígitos.
- * @param {string} phone - O telefone do cliente.
- * @returns {Promise<object|null>} O registro do cliente ou nulo.
- */
 async function getCustomerRecordByPhone(phone) {
   const digitsOnly = (phone || '').replace(/\D/g, '');
   if (digitsOnly.length < 6) return null;
@@ -124,23 +119,14 @@ async function getCustomerRecordByPhone(phone) {
   return rows[0] || null;
 }
 
-/**
- * Busca uma regra de controle de acesso para um email.
- * @param {string} email - O email do cliente.
- * @returns {Promise<object|null>} A regra de acesso ou nulo.
- */
 async function getAccessControlRule(email) {
     const { rows } = await pool.query(`SELECT * FROM access_control WHERE email = $1`, [email.toLowerCase()]);
     return rows[0] || null;
 }
 
 
-// --- FUNÇÕES DE MODIFICAÇÃO (WEBHOOKS E ADMIN) ---
+// --- FUNÇÕES DE MODIFICAÇÃO (Sem alterações) ---
 
-/**
- * Concede acesso vitalício. Insere ou atualiza a regra em 'access_control'.
- * Também garante que o cliente exista na tabela 'customers'.
- */
 async function updateLifetimeAccess(email, name, phone, invoiceId, productId) {
     const client = await pool.connect();
     try {
@@ -164,9 +150,6 @@ async function updateLifetimeAccess(email, name, phone, invoiceId, productId) {
     }
 }
 
-/**
- * Atualiza ou concede acesso anual. A data de expiração é calculada como 365 dias a partir do pagamento.
- */
 async function updateAnnualAccess(email, name, phone, invoiceId, paidAt) {
     const expirationDate = new Date(paidAt);
     expirationDate.setDate(expirationDate.getDate() + 365);
@@ -178,9 +161,6 @@ async function updateAnnualAccess(email, name, phone, invoiceId, paidAt) {
     );
 }
 
-/**
- * Atualiza o status de uma assinatura mensal (ex: 'paid', 'overdue').
- */
 async function updateMonthlyStatus(email, name, phone, invoiceId, status) {
     await pool.query(
         `INSERT INTO customers (email, name, phone, monthly_status, last_invoice_id, updated_at) VALUES ($1, $2, $3, $4, $5, NOW())
@@ -189,10 +169,6 @@ async function updateMonthlyStatus(email, name, phone, invoiceId, status) {
     );
 }
 
-/**
- * Revoga o acesso baseado em uma fatura.
- * Para anuais/mensais, define o status/data como nulo. Para vitalício, muda a permissão para 'canceled'.
- */
 async function revokeAccessByInvoice(invoiceId, productType) {
     if (productType === 'annual' || productType === 'monthly') {
         await pool.query(
@@ -208,11 +184,8 @@ async function revokeAccessByInvoice(invoiceId, productType) {
 }
 
 
-// --- FUNÇÕES DE LÓGICA INTERNA ---
+// --- FUNÇÕES DE LÓGICA INTERNA (Sem alterações) ---
 
-/**
- * Registra um novo prospect (cliente potencial que pode usar o período de cortesia).
- */
 async function registerProspect(email, name, phone) {
     await pool.query(
         `INSERT INTO customers (email, name, phone, updated_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (email) DO NOTHING`,
@@ -220,9 +193,6 @@ async function registerProspect(email, name, phone) {
     );
 }
 
-/**
- * Atualiza o contador de sermões de cortesia e o mês vigente.
- */
 async function updateGraceSermons(email, count, month) {
     await pool.query(
         `UPDATE customers SET grace_sermons_used = $1, grace_period_month = $2, updated_at = NOW() WHERE email = $3`,
@@ -230,9 +200,6 @@ async function updateGraceSermons(email, count, month) {
     );
 }
 
-/**
- * Registra a atividade de geração de um sermão no log.
- */
 async function logSermonActivity(details) {
     const { user_email, sermon_topic, sermon_audience, sermon_type, sermon_duration, model_used, prompt_instruction } = details;
     await pool.query(
