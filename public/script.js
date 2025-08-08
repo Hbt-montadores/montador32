@@ -1,12 +1,9 @@
-// public/script.js - Versão Final com todas as funcionalidades visuais restauradas
+// public/script.js - Versão Final (limpa, sem botão de instalar persistente)
 
 // ===================================================================
 // SEÇÃO 1: LOGGING DE ERROS DO CLIENTE E SERVICE WORKER
 // ===================================================================
 
-/**
- * Envia uma mensagem de erro para o servidor para registro nos logs.
- */
 function logErrorToServer(level, message) {
   const errorLevel = level || 'error';
   const errorMessage = message || 'Mensagem de erro não fornecida.';
@@ -23,16 +20,12 @@ function logErrorToServer(level, message) {
   }
 }
 
-/**
- * Captura global de erros de JavaScript não tratados na página.
- */
 window.onerror = function(message, source, lineno, colno, error) {
   const errorMessage = `Erro não capturado: ${message} em ${source}:${lineno}:${colno}. Stack: ${error ? error.stack : 'N/A'}`;
   logErrorToServer('error', errorMessage);
   return false;
 };
 
-// Registra o Service Worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js')
@@ -49,9 +42,7 @@ if ('serviceWorker' in navigator) {
 let currentStep = 1;
 let elements = {};
 let loadingInterval;
-let installButton; 
 
-// RESTAURADO: Array com as frases de carregamento para sermões longos
 const longSermonMessages = [
     "Consultando as referências e o contexto bíblico...",
     "Estruturando a espinha dorsal da sua mensagem...",
@@ -64,7 +55,6 @@ const longSermonMessages = [
     "Quase pronto! Polindo os detalhes finais do seu sermão."
 ];
 
-// Mapeia os elementos do DOM quando a página carrega
 window.addEventListener('load', () => {
   if (document.getElementById('step-container')) {
     elements = {
@@ -74,34 +64,10 @@ window.addEventListener('load', () => {
         userInput: document.getElementById('user-input'),
         options: document.getElementById('options'),
         loading: document.getElementById('loading'),
-        loadingText: document.getElementById('loading-text'), // Necessário para as frases
+        loadingText: document.getElementById('loading-text'),
         sermonResult: document.getElementById('sermon-result'),
         errorContainer: document.getElementById('error-container')
     };
-    
-    installButton = document.getElementById('install-button');
-
-    // Verifica se o app é instalável
-    if (installButton) {
-        setInterval(() => {
-            if (document.body.classList.contains('installable') && installButton.style.display === 'none') {
-                installButton.style.display = 'block';
-            }
-        }, 1000);
-
-        installButton.addEventListener('click', async () => {
-            if (window.deferredPrompt) {
-                window.deferredPrompt.prompt();
-                const { outcome } = await window.deferredPrompt.userChoice;
-                if (outcome === 'accepted') {
-                    installButton.style.display = 'none';
-                    document.body.classList.remove('installable');
-                }
-                window.deferredPrompt = null;
-            }
-        });
-    }
-
     startNewSermon();
   }
 });
@@ -123,10 +89,6 @@ function startNewSermon() {
 
   if (elements.loadingText) elements.loadingText.textContent = "Gerando sermão, por favor aguarde...";
   clearInterval(loadingInterval);
-
-  if (installButton && document.body.classList.contains('installable')) {
-    installButton.style.display = 'block';
-  }
 }
 
 function handleFetchError(error) {
@@ -213,11 +175,6 @@ function generateSermon(userResponse) {
   elements.stepContainer.style.display = 'none';
   elements.loading.style.display = 'block';
 
-  if (installButton) {
-    installButton.style.display = 'none';
-  }
-
-  // RESTAURADO: Lógica para mostrar mensagens de espera para sermões longos
   const longSermonTriggers = ["Entre 40 e 50 min", "Entre 50 e 60 min", "Acima de 1 hora"];
   if (longSermonTriggers.includes(userResponse)) {
     elements.loadingText.textContent = "Você escolheu um sermão mais longo. A preparação pode levar um pouco mais de tempo...";
