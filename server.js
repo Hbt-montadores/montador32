@@ -1,4 +1,4 @@
-// server.js - Versão Final Definitiva com Logs de Atividade Restaurados
+// server.js - Versão Final Definitiva com Sanitização de Data
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
@@ -173,6 +173,22 @@ app.post("/login-by-phone", loginLimiter, async (req, res) => {
     }
 });
 
+function sanitizeEduzzDate(date, time) {
+    if (!date) {
+        console.warn("[Sanitize Date] Data da Eduzz recebida como nula. Usando a data atual como fallback.");
+        return new Date().toISOString();
+    }
+    let cleanDate = date.replace(/-/g, '');
+    if (cleanDate.length === 8) {
+        const year = cleanDate.substring(0, 4);
+        const month = cleanDate.substring(4, 6);
+        const day = cleanDate.substring(6, 8);
+        const cleanTime = time || '00:00:00';
+        return `${year}-${month}-${day}T${cleanTime}`;
+    }
+    return `${date} ${time || '00:00:00'}`;
+}
+
 app.post("/eduzz/webhook", async (req, res) => {
     const { api_key, product_cod, cus_email, cus_name, cus_cel, event_name, trans_cod, trans_paiddate, trans_paidtime } = req.body;
 
@@ -214,7 +230,7 @@ app.post("/eduzz/webhook", async (req, res) => {
                     console.log(`[Webhook-Sucesso] Acesso VITALÍCIO concedido para [${cus_email}] via fatura [${trans_cod}].`);
                     break;
                 case 'annual':
-                    const paidAt = `${trans_paiddate} ${trans_paidtime}`;
+                    const paidAt = sanitizeEduzzDate(trans_paiddate, trans_paidtime);
                     await updateAnnualAccess(cus_email, cus_name, cus_cel, trans_cod, paidAt);
                     console.log(`[Webhook-Sucesso] Acesso ANUAL concedido/renovado para [${cus_email}] via fatura [${trans_cod}].`);
                     break;
@@ -651,7 +667,6 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
     const { userResponse } = req.body;
     const step = req.body.step || 1;
     
-    // Log para cada etapa
     console.log(`[API Next-Step] Usuário [${req.session.user.email}] - Etapa ${step}: ${userResponse}`);
     
     try {
