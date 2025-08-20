@@ -551,44 +551,89 @@ app.get("/admin/view-activity", async (req, res) => {
     }
 });
 
+// ROTA DE IMPORTAÇÃO CSV (VERSÃO FINAL E OTIMIZADA PARA SUPABASE)
 app.get("/admin/import-from-csv", async (req, res) => {
     const { key, plan_type } = req.query;
     if (key !== process.env.ADMIN_KEY) { return res.status(403).send("<h1>Acesso Negado</h1>"); }
     if (!['anual', 'vitalicio', 'mensal'].includes(plan_type)) { return res.status(400).send("<h1>Tipo de plano inválido.</h1>"); }
     
-    const CSV_FILE_PATH = path.join(__dirname, 'lista-clientes.csv');
-    if (!fs.existsSync(CSV_FILE_PATH)) { return res.status(404).send("<h1>Erro: Arquivo 'lista-clientes.csv' não encontrado.</h1><p>Certifique-se de que o arquivo está na raiz do projeto e use ponto e vírgula (;) como separador.</p>"); }
-    
+    // ATENÇÃO: Confirme que esta é a URL correta do seu arquivo CSV bruto no GitHub
+    const CSV_URL = 'https://raw.githubusercontent.com/Hbt-montadores/montador32/main/lista-clientes.csv';
+
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.write(`<h1>Iniciando importação para plano: ${plan_type.toUpperCase()}...</h1>`);
 
-    const clientsToImport = [];
-    fs.createReadStream(CSV_FILE_PATH)
-      .pipe(csv({ separator: ';' }))
-      .on('data', (row) => { if (row['Cliente / E-mail']) { clientsToImport.push(row); }})
-      .on('end', async () => {
-        res.write(`<p>Leitura do CSV concluída. ${clientsToImport.length} linhas com e-mail encontradas para processar.</p><hr>`);
-        if (clientsToImport.length === 0) return res.end('<p>Nenhum cliente para importar. Encerrando.</p>');
+    try {
+        const response = await fetch(CSV_URL);
+        if (!response.ok) { throw new Error(`Falha ao baixar o CSV: ${response.statusText}`); }
 
-        const client = await pool.connect();
-        try {
-            res.write('<p>Iniciando transação com o banco de dados...</p><ul>');
-            await client.query('BEGIN');
-            for (const customerData of clientsToImport) {
-                // ... lógica de importação ...
-            }
-            await client.query('COMMIT');
-            res.end(`</ul><hr><h2>✅ Sucesso!</h2><p>A importação para o plano ${plan_type.toUpperCase()} foi concluída.</p>`);
-        } catch (e) {
-            await client.query('ROLLBACK');
-            res.end(`</ul><h2>❌ ERRO!</h2><p>Ocorreu um problema durante a importação. Nenhuma alteração foi salva (ROLLBACK).</p><pre>${e.stack}</pre>`);
-            console.error("ERRO DE IMPORTAÇÃO CSV:", e);
-        } finally {
-            client.release();
-        }
-      });
+        const clientsToImport = [];
+        // Etapa 1: Ler e processar o arquivo CSV da rede
+        response.body.pipe(csv({ separator: ';' }))
+            .on('data', (row) => { if (row['Cliente / E-mail']) { clientsToImport.push(row); } })
+            .on('end', async () => {
+                res.write(`<p>Leitura do CSV concluída: ${clientsToImport.length} clientes encontrados.</p><hr>`);
+                if (clientsToImport.length === 0) {
+                    return res.end('<p>Nenhum cliente para importar.</p>');
+                }
+                
+                // Etapa 2: Apenas AGORA, com os dados prontos, conectar ao banco
+                const client = await pool.connect();
+                try {
+                    res.write('<p>Iniciando transação com o banco de dados...</p><ul>');
+                    
+                    // Etapa 3: Executar a transação o mais rápido possível
+                    await client.query('BEGIN');
+
+                    for (const customerData of clientsToImport) {
+                        const email = customerData['Cliente / E-mail'].toLowerCase();
+                        const name = customerData['Cliente / Nome'] || customerData['Cliente / Razão-Social'];
+                        const phone = customerData['Cliente / Fones'];
+                        
+                        if (plan_type === 'anual') {
+                            const paymentDateStr = customerData['Data de Pagamento'];
+                            if (!paymentDateStr) continue;
+                            const [datePart, timePart] = paymentDateStr.split(' ');
+                            const [day, month, year] = datePart.split('/');
+                            const paymentDate = new Date(`${year}-${month}-${day}T${timePart || '00:00:00'}`);
+                            const expirationDate = new Date(paymentDate);
+                            expirationDate.setDate(expirationDate.getDate() + 365);
+                            await client.query(`INSERT INTO customers (email, name, phone, annual_expires_at, updated_at) VALUES ($1, $2, $3, $4, NOW()) ON CONFLICT (email) DO UPDATE SET name = COALESCE(EXCLUDED.name, customers.name), phone = COALESCE(EXCLUDED.phone, customers.phone), annual_expires_at = EXCLUDED.annual_expires_at, updated_at = NOW()`,[email, name, phone, expirationDate.toISOString()]);
+                        } else if (plan_type === 'vitalicio') {
+                            const invoiceId = customerData['Fatura']; if (!invoiceId) continue;
+                            await client.query(`INSERT INTO access_control (email, permission, reason, product_id, invoice_id) VALUES ($1, 'allow', 'Importado via CSV', $2, $3) ON CONFLICT (email) DO NOTHING`, [email, customerData['ID do Produto'], invoiceId]);
+                            await client.query(`INSERT INTO customers (email, name, phone) VALUES ($1, $2, $3) ON CONFLICT (email) DO NOTHING`, [email, name, phone]);
+                        } else if (plan_type === 'mensal') {
+                            const statusCsv = customerData['Status']?.toLowerCase(); if (!statusCsv) continue;
+                            let status;
+                            if (statusCsv.includes('paga') || statusCsv.includes('em dia')) status = 'paid';
+                            else if (statusCsv.includes('atrasado') || statusCsv.includes('vencida')) status = 'overdue';
+                            else if (statusCsv.includes('cancelada')) status = 'canceled';
+                            else continue;
+                            await client.query(`INSERT INTO customers (email, name, phone, monthly_status, updated_at) VALUES ($1, $2, $3, $4, NOW()) ON CONFLICT (email) DO UPDATE SET name = COALESCE(EXCLUDED.name, customers.name), phone = COALESCE(EXCLUDED.phone, customers.phone), monthly_status = EXCLUDED.monthly_status, updated_at = NOW()`, [email, name, phone, status]);
+                        }
+                    }
+
+                    // Etapa 4: Finalizar a transação
+                    await client.query('COMMIT');
+                    
+                    // Etapa 5: Só agora, com 100% de certeza, enviar a mensagem de sucesso
+                    res.end(`</ul><hr><h2>✅ Sucesso!</h2><p>A importação para o plano ${plan_type.toUpperCase()} foi concluída e os dados foram salvos.</p>`);
+
+                } catch (e) { 
+                    await client.query('ROLLBACK'); 
+                    console.error("ERRO DE IMPORTAÇÃO CSV (ROLLBACK EXECUTADO):", e);
+                    res.end(`</ul><h2>❌ ERRO!</h2><p>Ocorreu um problema durante a escrita no banco de dados. Nenhuma alteração foi salva.</p><pre>${e.stack}</pre>`);
+                } 
+                finally { 
+                    client.release(); 
+                }
+            });
+    } catch (error) {
+        console.error("Erro ao baixar o arquivo CSV:", error);
+        res.end(`<h2>❌ ERRO!</h2><p>Não foi possível baixar o arquivo CSV do GitHub. Verifique a URL e se o repositório é público.</p>`);
+    }
 });
-
 
 // --- 5. ROTAS PROTEGIDAS (App Principal) ---
 
