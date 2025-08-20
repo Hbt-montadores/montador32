@@ -42,6 +42,7 @@ if ('serviceWorker' in navigator) {
 let currentStep = 1;
 let elements = {};
 let loadingInterval;
+let sermonData = {};
 
 const longSermonMessages = [
     "Consultando as referências e o contexto bíblico...",
@@ -74,6 +75,7 @@ window.addEventListener('load', () => {
 
 function startNewSermon() {
   currentStep = 1;
+  sermonData = {};
   if (!elements || !elements.question) return;
 
   elements.question.innerText = 'Qual será o tema do seu sermão?';
@@ -127,6 +129,11 @@ function nextStep(response) {
       return;
     }
   }
+
+  if(currentStep === 1) sermonData.topic = userResponse;
+  if(currentStep === 2) sermonData.audience = userResponse;
+  if(currentStep === 3) sermonData.sermonType = userResponse;
+  if(currentStep === 4) sermonData.duration = userResponse;
 
   if (currentStep === 4) {
     generateSermon(userResponse);
@@ -234,10 +241,11 @@ function saveAsPdf() {
     });
 
     const htmlContent = sermonContent.innerHTML;
-    const margin = 15;
+    const margin = 10;
+    const fontSize = 16;
+    const lineHeight = 8;
     const usableWidth = doc.internal.pageSize.getWidth() - (margin * 2);
 
-    // CORREÇÃO DE SINTAXE: Removidas as aspas e chaves extras ao redor de $1
     const textLines = htmlContent
       .replace(/<strong>(.*?)<\/strong>/g, 'NEG:$1:NEG')
       .split('<br>');
@@ -245,7 +253,7 @@ function saveAsPdf() {
     let y = margin;
 
     doc.setFont('Helvetica', 'normal');
-    doc.setFontSize(12);
+    doc.setFontSize(fontSize);
 
     textLines.forEach(line => {
       const segments = line.split(/NEG:|:NEG/);
@@ -257,19 +265,23 @@ function saveAsPdf() {
         const splitText = doc.splitTextToSize(segment, usableWidth);
         
         splitText.forEach(textLine => {
-          if (y + 6 > doc.internal.pageSize.getHeight() - margin) {
+          if (y + lineHeight > doc.internal.pageSize.getHeight() - margin) {
             doc.addPage();
             y = margin;
           }
           doc.text(textLine, margin, y);
-          y += 6;
+          y += lineHeight;
         });
         isBold = !isBold;
       });
     });
 
-    doc.save('meu_sermao.pdf');
-    logErrorToServer('info', 'Usuário salvou o sermão como .pdf');
+    let fileName = sermonData.topic || 'meu_sermao';
+    fileName = fileName.replace(/[\\/:*?"<>|]/g, '').trim();
+    fileName = fileName.substring(0, 50);
+
+    doc.save(`${fileName}.pdf`);
+    logErrorToServer('info', `Usuário salvou o sermão "${fileName}.pdf"`);
 
   } catch (error) {
     console.error('Erro ao gerar PDF:', error);
