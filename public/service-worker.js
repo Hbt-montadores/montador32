@@ -42,18 +42,25 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Evento 'fetch': Intercepta as requisições para permitir o funcionamento offline (estratégia Cache-First).
+// Evento 'fetch': Intercepta requisições com uma estratégia híbrida para corrigir o bug de logout.
 self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        // Se encontrar no cache, retorna a resposta do cache.
-        if (response) {
-          return response;
-        }
-        // Se não encontrar, busca na rede.
-        return fetch(event.request);
+  // Apenas para requisições de navegação (páginas HTML)
+  if (event.request.mode === 'navigate') {
+    // Estratégia: Network First, then Cache
+    event.respondWith(
+      fetch(event.request).catch(() => {
+        // Se a rede falhar (offline), serve a página /app do cache como fallback.
+        return caches.match('/app');
       })
+    );
+    return;
+  }
+
+  // Para todos os outros assets (CSS, JS, imagens), usa a estratégia Cache-First
+  event.respondWith(
+    caches.match(event.request).then(response => {
+      return response || fetch(event.request);
+    })
   );
 });
 
