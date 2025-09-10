@@ -2,7 +2,7 @@
   "name": "Montador de Sermões 3.2",
   "short_name": "Montador 3.2",
   "description": "Seu assistente para a preparação de sermões.",
-  "start_url": "/",
+  "start_url": "/app",
   "display": "standalone",
   "background_color": "#E3F2FD",
   "theme_color": "#0D47A1",
