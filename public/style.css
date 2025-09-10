@@ -1,4 +1,4 @@
-/* public/style.css - Versão Final com CSS Específico para Botões */
+/* public/style.css - Versão Final com Centralização do Spinner Corrigida */
 
 /* Estilos gerais */
 body {
@@ -25,8 +25,8 @@ h1 {
     margin-bottom: 30px;
 }
 
-/* Container principal */
-.container {
+/* Container principal (usado em login.html e app.html) */
+#form-container, #options-container, #login-container, .container {
     background-color: #FFFFFF;
     padding: 30px;
     border-radius: 15px;
@@ -35,7 +35,7 @@ h1 {
     margin: 0 auto;
 }
 
-/* Labels e Textos */
+/* Rótulo do campo de tema */
 .input-label, #question {
     font-size: 1.5em;
     font-weight: bold;
@@ -44,12 +44,7 @@ h1 {
     color: #0D47A1;
 }
 
-.warning-text {
-    display: block;
-    margin-bottom: 15px;
-}
-
-/* Campos de entrada de texto */
+/* Campo de entrada de texto (tema do sermão) */
 .input-field, #user-input {
     width: calc(100% - 24px);
     padding: 15px;
@@ -61,61 +56,47 @@ h1 {
     box-sizing: border-box;
 }
 
-/* BOTÕES: Lógica de Estilo Refatorada */
-
-/* Base para todos os botões para evitar repetição */
-button {
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 1.2em;
-}
-
-/* Botões de Ação Principal (largura total) */
-.action-button, .option-button {
+/* Botões gerais (Opções e Próximo Passo) */
+button, .option-button {
     background-color: #1565C0;
     color: #fff;
     padding: 15px;
+    font-size: 1.4em;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
     width: 100%;
     margin: 10px 0;
     display: block;
 }
 
-.action-button:hover, .option-button:hover {
+button:hover, .option-button:hover {
     background-color: #1E88E5;
 }
 
-/* Botões de Ação Menores (tamanho automático) */
-.sermon-actions button {
-    background-color: #1565C0;
-    color: #fff;
-    width: auto;
-    font-size: 1em;
-    padding: 12px 25px;
-    margin: 0 10px;
-    display: inline-block;
-}
-
-/* Tela de carregamento modal */
+/* CORREÇÃO DEFINITIVA: Tela de carregamento agora ocupa a tela inteira E centraliza o conteúdo */
 #loading {
     position: fixed;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(13, 71, 161, 0.85);
-    z-index: 10000;
+    width: 100%; /* Garante que o overlay ocupe toda a largura */
+    height: 100%; /* Garante que o overlay ocupe toda a altura */
+    background-color: rgba(227, 242, 253, 0.8);
+    z-index: 9999;
+    
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: center; /* Centraliza verticalmente e horizontalmente */
+    
     font-size: 1.6em;
-    color: #FFFFFF;
+    color: #1565C0;
 }
 
-.loader {
-    border: 8px solid rgba(255, 255, 255, 0.3);
-    border-top: 8px solid #FFFFFF;
+/* Spinner circular */
+.loader, .spinner {
+    border: 8px solid #E3F2FD;
+    border-top: 8px solid #1565C0;
     border-radius: 50%;
     width: 60px;
     height: 60px;
@@ -128,43 +109,36 @@ button {
     100% { transform: rotate(360deg); }
 }
 
-.cancel-button {
-    background-color: transparent;
-    border: 2px solid rgba(255, 255, 255, 0.7);
-    color: rgba(255, 255, 255, 0.9);
-    width: auto;
-    padding: 10px 20px;
-    font-size: 0.8em;
-    margin-top: 20px;
-}
-.cancel-button:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
+/* Conteúdo do sermão gerado */
 #sermon-result {
     text-align: left;
     white-space: normal;
     line-height: 1.8;
     font-size: 1.5em;
     color: #0D47A1;
+    background-color: #FFFFFF;
     padding: 20px;
-    margin-top: 20px;
+    border-radius: 15px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    margin: 20px auto;
+    max-width: 800px;
 }
 
-#install-prompt-container {
-    margin-bottom: 20px;
-}
-
-#install-button {
+/* Botão de Instalação */
+#install-button, .install-button {
+    padding: 8px 12px;
+    font-size: 0.9em;
     background-color: #4CAF50;
     color: white;
-    font-weight: bold;
-    font-size: 1.2em;
-    padding: 15px;
-    width: 100%;
-    box-sizing: border-box;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    width: auto;
+    margin-left: 10px;
 }
 
+/* Botão/Link de Sair */
 .logout-link {
     font-size: 0.9em;
     color: white;
@@ -175,6 +149,24 @@ button {
     margin-left: 10px;
 }
 
+.logout-link:hover {
+    background-color: rgba(211, 47, 47, 0.9);
+}
+
+/* Container da tela de boas-vindas */
+.welcome-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 80vh;
+    text-align: center;
+}
+.welcome-container h1 { font-size: 2.5em; margin-bottom: 20px; }
+.welcome-container p { font-size: 1.2em; max-width: 500px; margin-bottom: 40px; }
+.welcome-container .start-button { font-size: 1.8em; padding: 20px 40px; font-weight: bold; width: auto; }
+
+/* Header do app.html */
 .app-header {
     display: flex;
     justify-content: space-between;
@@ -186,6 +178,21 @@ button {
 .app-header h1 { margin: 0; font-size: 1.8em; }
 .header-actions { display: flex; align-items: center; }
 
+/* Ações do sermão (Salvar, Novo) */
+.sermon-actions {
+    text-align: center;
+    margin-top: 20px;
+}
+
+.sermon-actions button {
+    width: auto;
+    font-size: 1em;
+    padding: 12px 25px;
+    margin: 0 10px;
+    display: inline-block;
+}
+
+/* Container de Erro */
 #error-container {
     padding: 30px;
     background-color: #fff3f3;
@@ -194,62 +201,4 @@ button {
 }
 #error-container h2 {
     color: #d32f2f;
-}
-
-#soft-prompt-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.6);
-    z-index: 9998;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-#soft-prompt-modal {
-    background-color: white;
-    padding: 25px;
-    border-radius: 12px;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-    max-width: 90%;
-    width: 400px;
-    text-align: center;
-}
-
-#soft-prompt-modal h3 {
-    margin-top: 0;
-    font-size: 1.5em;
-    color: #0D47A1;
-}
-
-#soft-prompt-modal p {
-    font-size: 1.1em;
-    line-height: 1.5;
-    margin-bottom: 20px;
-    color: #333;
-}
-
-.soft-prompt-actions .soft-prompt-button {
-    width: 100%;
-    padding: 12px;
-    font-size: 1.1em;
-    font-weight: bold;
-    margin: 5px 0;
-}
-
-.soft-prompt-button.primary {
-    background-color: #1565C0;
-    color: white;
-}
-
-.soft-prompt-button.secondary {
-    background-color: transparent;
-    color: #555;
-    border: none;
-}
-.soft-prompt-button.secondary:hover {
-    background-color: #f0f0f0;
 }
