@@ -1,4 +1,4 @@
-// db.js - Versão Final com Funções de Verificação e Deleção de Inscrições
+// db.js - Versão de Diagnóstico com Logs de Pool
 
 const { Pool } = require('pg');
 
@@ -9,16 +9,26 @@ const pool = new Pool({
   ssl: isProduction ? { rejectUnauthorized: false } : false
 });
 
+// ===================================================================
+// ADIÇÃO DE DIAGNÓSTICO:
+// Este bloco irá "ouvir" por erros que acontecem no pool de conexões
+// em segundo plano, que normalmente não são mostrados nos logs.
+// ===================================================================
 pool.on('error', (err, client) => {
   console.error('[ERRO NO POOL DE CONEXÕES PG] Erro inesperado no cliente inativo', err);
-  process.exit(-1);
+  process.exit(-1); // Encerra o processo para que o Render o reinicie
 });
+// ===================================================================
 
+/**
+ * Função auto-executável para inicializar e migrar o banco de dados.
+ */
 (async () => {
   const client = await pool.connect();
   try {
     console.log('Verificando e preparando o banco de dados...');
 
+    // --- Tabela 'customers' ---
     await client.query(`
       CREATE TABLE IF NOT EXISTS customers (
         id SERIAL PRIMARY KEY,
@@ -34,9 +44,13 @@ pool.on('error', (err, client) => {
         last_product_id TEXT
       );
     `);
-    
-    console.log('✔️ Tabela "customers" pronta.');
 
+    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_invoice_id TEXT;`);
+    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_product_id TEXT;`);
+    
+    console.log('✔️ Tabela "customers" pronta e migrada.');
+
+    // --- Tabela 'access_control' ---
     await client.query(`
       CREATE TABLE IF NOT EXISTS access_control (
         id SERIAL PRIMARY KEY,
@@ -50,6 +64,7 @@ pool.on('error', (err, client) => {
     `);
     console.log('✔️ Tabela "access_control" pronta.');
 
+    // --- Tabela 'activity_log' ---
     await client.query(`
       CREATE TABLE IF NOT EXISTS activity_log (
         id SERIAL PRIMARY KEY,
@@ -65,6 +80,7 @@ pool.on('error', (err, client) => {
     `);
     console.log('✔️ Tabela "activity_log" pronta.');
 
+    // --- Tabela 'user_sessions' ---
     await client.query(`
       CREATE TABLE IF NOT EXISTS "user_sessions" (
         "sid" varchar NOT NULL COLLATE "default", "sess" json NOT NULL, "expire" timestamp(6) NOT NULL
@@ -76,16 +92,6 @@ pool.on('error', (err, client) => {
     `);
     console.log('✔️ Tabela "user_sessions" pronta.');
 
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS push_subscriptions (
-        id SERIAL PRIMARY KEY,
-        user_email TEXT NOT NULL,
-        subscription_object JSONB UNIQUE NOT NULL,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-      );
-    `);
-    console.log('✔️ Tabela "push_subscriptions" pronta.');
-
     console.log('✅ Banco de dados pronto para uso.');
 
   } catch (err) {
@@ -96,7 +102,8 @@ pool.on('error', (err, client) => {
   }
 })();
 
-// --- Funções de Consulta e Modificação (Clientes e Acesso) ---
+
+// --- FUNÇÕES DE CONSULTA, MODIFICAÇÃO E LÓGICA INTERNA ---
 
 async function getCustomerRecordByEmail(email) {
   const { rows } = await pool.query(`SELECT * FROM customers WHERE email = $1`, [email.toLowerCase()]);
@@ -195,43 +202,6 @@ async function logSermonActivity(details) {
     );
 }
 
-// --- Funções de Gerenciamento de Notificações Push ---
-
-async function savePushSubscription(user_email, subscription_object) {
-    const query = `
-        INSERT INTO push_subscriptions (user_email, subscription_object)
-        VALUES ($1, $2)
-        ON CONFLICT (subscription_object) DO NOTHING
-    `;
-    await pool.query(query, [user_email, subscription_object]);
-}
-
-async function getAllPushSubscriptions() {
-    const { rows } = await pool.query(`SELECT subscription_object FROM push_subscriptions`);
-    return rows.map(row => row.subscription_object);
-}
-
-/**
- * NOVO: Verifica se um usuário já tem uma inscrição de notificação salva.
- * Retorna true se houver pelo menos uma inscrição, false caso contrário.
- */
-async function checkIfUserIsSubscribed(user_email) {
-    const query = `SELECT 1 FROM push_subscriptions WHERE user_email = $1 LIMIT 1`;
-    const { rows } = await pool.query(query, [user_email]);
-    return rows.length > 0;
-}
-
-/**
- * NOVO: Deleta uma inscrição de notificação específica do banco de dados.
- * O objeto de inscrição é usado como identificador único.
- */
-async function deletePushSubscription(subscription_object) {
-    const query = `DELETE FROM push_subscriptions WHERE subscription_object = $1`;
-    await pool.query(query, [subscription_object]);
-    console.log('[DB] Inscrição expirada removida do banco de dados.');
-}
-
-
 module.exports = {
   pool,
   getCustomerRecordByEmail,
@@ -243,10 +213,5 @@ module.exports = {
   revokeAccessByInvoice,
   registerProspect,
   updateGraceSermons,
-  logSermonActivity,
-  savePushSubscription,
-  getAllPushSubscriptions,
-  // Exporta as novas funções
-  checkIfUserIsSubscribed,
-  deletePushSubscription
+  logSermonActivity
 };
