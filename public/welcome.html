@@ -18,39 +18,35 @@
         <h1>Parabéns!</h1>
         <p>Seja bem-vindo ao Montador de Sermões 3.2. Para a melhor experiência, recomendamos instalar o atalho do aplicativo em seu dispositivo.</p>
         
-        <button id="start-button" class="start-button">Começar a Usar</button>
+        <button id="action-button" class="action-button">Continuar</button>
     </div>
 
     <script>
-        // Lógica final e corrigida para instalação e redirecionamento
+        // Versão Final e Simplificada: A ação do usuário é o único gatilho.
+        
+        const actionButton = document.getElementById('action-button');
 
-        const startButton = document.getElementById('start-button');
-
-        function updateButtonState() {
-            // Agora verificamos window.deferredPrompt, que é preenchido pelo pwa-installer.js
-            if (window.deferredPrompt) {
-                startButton.innerText = 'Instalar e Começar';
-            }
+        function onAppInstallable() {
+            console.log('[welcome] App é instalável. Atualizando botão.');
+            actionButton.innerText = 'Instalar App';
         }
         
-        window.addEventListener('load', () => {
-          setTimeout(updateButtonState, 200);
-        });
+        window.addEventListener('pwa-installable', onAppInstallable);
+        
+        if (window.deferredPrompt) {
+            onAppInstallable();
+        }
 
-        startButton.addEventListener('click', async () => {
-            // Se o app for instalável, primeiro mostra o prompt
+        actionButton.addEventListener('click', async () => {
             if (window.deferredPrompt) {
                 window.deferredPrompt.prompt();
-                
-                // Aguarda a escolha do usuário antes de continuar
                 const { outcome } = await window.deferredPrompt.userChoice;
                 
-                console.log(`Resultado da instalação: ${outcome}`);
-                
-                window.deferredPrompt = null; // Limpa a referência
+                if (outcome === 'accepted') {
+                    window.deferredPrompt = null;
+                }
             }
             
-            // Sempre redireciona para o app após a tentativa de instalação (ou se não houver prompt)
             window.location.href = '/app';
         });
     </script>
