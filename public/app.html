@@ -7,7 +7,8 @@
     
     <meta name="theme-color" content="#2196F3">
     <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="images/icons/icon-192x192.png">
+    <!-- CORRIGIDO: O caminho para o ícone foi ajustado para o local correto -->
+    <link rel="apple-touch-icon" href="/images/logo-192.png">
 
     <script src="pwa-installer.js" defer></script>
     
@@ -19,18 +20,20 @@
         <header class="app-header">
             <h1>Montador de Sermões 3.2</h1>
             <div class="header-actions">
-                <!-- O botão de instalação agora está presente no HTML, como esperado pelo script -->
-                <button id="install-button" class="install-button" style="display: none;">Instalar App</button>
                 <a href="/logout" class="logout-link">Sair</a>
             </div>
         </header>
 
         <main>
-            <div id="step-container" style="display: none;">
+            <div id="install-prompt-container">
+                <button id="install-button" class="action-button" style="display: none;">Atalho para Acesso Fácil</button>
+            </div>
+
+            <div id="step-container" style="display: block;">
                 <h2 id="question">Qual será o tema do seu sermão?</h2>
                 <div id="input-area">
                     <input type="text" id="user-input" placeholder="Ex: A Parábola do Filho Pródigo">
-                    <button onclick="nextStep()">Próximo Passo</button>
+                    <button onclick="nextStep()" class="action-button">Próximo Passo</button>
                 </div>
                 <div id="options" style="display: none;"></div>
             </div>
@@ -38,23 +41,27 @@
             <div id="loading" style="display: none;">
                 <div class="loader"></div>
                 <p id="loading-text">Gerando seu sermão, por favor aguarde...</p>
+                <button id="cancel-sermon-button" class="cancel-button">Cancelar</button>
             </div>
 
-            <div id="sermon-result" style="display: none;">
-                <!-- O conteúdo do sermão será injetado aqui pelo script.js -->
-            </div>
-            
-            <div id="error-container" style="display: none;">
-                <!-- Mensagens de erro serão injetadas aqui pelo script.js -->
-            </div>
-
+            <div id="sermon-result" style="display: none;"></div>
+            <div id="error-container" style="display: none;"></div>
         </main>
     </div>
 
-    <!-- Biblioteca para gerar PDF no navegador -->
+    <!-- Estrutura do Modal "Soft Prompt" para Notificações -->
+    <div id="soft-prompt-overlay" style="display: none;">
+        <div id="soft-prompt-modal">
+            <h3>Uma Novidade para Você!</h3>
+            <p>Quer ser o primeiro a saber sobre novos recursos e atualizações importantes? Ative as notificações do Montador de Sermões.</p>
+            <div class="soft-prompt-actions">
+                <button id="soft-prompt-yes" class="soft-prompt-button primary">Sim, quero receber avisos!</button>
+                <button id="soft-prompt-no" class="soft-prompt-button secondary">Agora não</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    
-    <!-- Script principal da aplicação -->
     <script src="script.js"></script>
 </body>
 </html>
