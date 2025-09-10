@@ -6,34 +6,44 @@
     <title>Montador de Sermões - Login</title>
     <link rel="stylesheet" href="style.css">
 
+    <!-- Bloco de código para o App ser instalável (PWA) -->
     <link rel="manifest" href="/manifest.json">
-    <script src="pwa-installer.js" defer></script>
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/service-worker.js');
+          navigator.serviceWorker.register('/service-worker.js')
+            .then(registration => {
+              console.log('Service Worker registrado com sucesso.');
+            })
+            .catch(error => {
+              console.log('Falha ao registrar o Service Worker:', error);
+            });
         });
       }
     </script>
+    <!-- Fim do Bloco PWA -->
 </head>
 <body>
     <header>
         <img src="https://cdn.glitch.global/db74bd9b-d683-421c-9223-f55b917c9dce/logo.png?v=1734385573934" alt="Logo do Montador de Sermões" class="logo">
     </header>
 
+    <!-- MUDANÇA: Título principal alterado -->
     <h1>Montador de Sermões 3.2</h1>
 
     <form id="login-form" method="POST" action="/login">
         <label for="email" class="input-label">Seu E-mail:</label>
         
+        <!-- MUDANÇA: Adicionada a mensagem de atenção abaixo do label -->
         <small class="warning-text"> (⚠️ Atenção, precisa ser o mesmo email usado na hora da compra) </small>
         
+        <!-- MUDANÇA: Placeholder do campo de email alterado -->
         <input type="email" id="email" name="email" class="input-field" placeholder="Digite o seu email aqui" required>
         
-        <!-- MODIFICADO: Adicionada a classe "action-button" para garantir o estilo correto -->
-        <button type="submit" id="login-button" class="action-button">Entrar</button>
+        <button type="submit" id="login-button">Entrar</button>
     </form>
 
+    <!-- Script para corrigir o teclado cobrindo o botão no celular -->
     <script>
       function handleInputFocus(event) {
         if (window.innerWidth < 768) { 
@@ -48,5 +58,6 @@
         emailInput.addEventListener('focus', handleInputFocus);
       }
     </script>
+    <!-- Fim do Script de correção -->
 </body>
 </html>
