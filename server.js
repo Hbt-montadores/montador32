@@ -1,7 +1,14 @@
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
 
+// ETAPA 1: INICIALIZAR O SENTRY PRIMEIRO DE TUDO
 const Sentry = require("@sentry/node");
+Sentry.init({
+  dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
+  tracesSampleRate: 1.0,
+});
+
+// ETAPA 2: CARREGAR O EXPRESS E OUTROS MÓDULOS DEPOIS DO SENTRY
 const express = require("express");
 const path = require("path");
 const fetch = require("node-fetch");
@@ -21,21 +28,11 @@ const {
 } = require('./db');
 
 const app = express();
-
-// INICIALIZAÇÃO CORRETA E SIMPLIFICADA DO SENTRY
-Sentry.init({
-  dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
-  // Ativa o monitoramento de performance
-  tracesSampleRate: 1.0,
-});
-
 const port = process.env.PORT || 3000;
 
-// O Sentry recomenda esta ordem:
-// 1. requestHandler
-// 2. Todas as outras rotas e middlewares
-// 3. errorHandler
-Sentry.setupExpressErrorHandler(app);
+// ETAPA 3: ADICIONAR OS HANDLERS DO SENTRY NO INÍCIO, LOGO APÓS A DEFINIÇÃO DO 'app'
+app.use(Sentry.Handlers.requestHandler());
+app.use(Sentry.Handlers.tracingHandler());
 
 app.set('trust proxy', 1);
 
@@ -900,7 +897,7 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
     }
 });
 
-// O error handler DEVE ser adicionado DEPOIS de todas as rotas e ANTES de qualquer outro middleware de erro.
+// ETAPA 4: ADICIONAR O ERROR HANDLER DO SENTRY NO FINAL
 app.use(Sentry.Handlers.errorHandler());
 
 
