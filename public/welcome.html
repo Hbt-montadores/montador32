@@ -9,11 +9,29 @@
     
     <script src="pwa-installer.js" defer></script>
 
-    <!-- ADICIONE O SCRIPT DO SENTRY AQUI -->
-    <script
-      src="https://js.sentry-cdn.com/681f52ee4a2930c13a0fd8abc7b7487c.min.js"
-      crossorigin="anonymous"
-    ></script>
+    <!-- ADICIONE ESTE BLOCO COMPLETO NO LUGAR DO ANTIGO -->
+<script
+  src="https://browser.sentry-cdn.com/7.117.0/bundle.min.js"
+  integrity="sha384-A51xWd2a50vL8Z12Jb9V3i6bS+f4vpo126/f1P1D7/K2vXWDYy8Xmr/2klY/T33k"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.init({
+    dsn: "https://681f52ee4a2930c13a0fd8abc7b7487c@o4510002850824192.ingest.us.sentry.io/4507543892787200",
+    
+    // ATIVA O MODO DE DEPURAÇÃO PARA VERMOS O QUE O SENTRY ESTÁ FAZENDO
+    debug: true, 
+
+    // Opcional, mas boas práticas para monitoramento completo
+    integrations: [
+      Sentry.browserTracingIntegration(),
+      Sentry.replayIntegration(),
+    ],
+    tracesSampleRate: 1.0, 
+    replaysSessionSampleRate: 0.1,
+    replaysOnErrorSampleRate: 1.0, 
+  });
+</script>
     
 </head>
 <body>
