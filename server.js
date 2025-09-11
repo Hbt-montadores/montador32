@@ -2,6 +2,12 @@
 
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
+
+
+// --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
+require("dotenv").config();
+const Sentry = require("@sentry/node");
+const { ProfilingIntegration } = require("@sentry/profiling-node");
 const express = require("express");
 const path = require("path");
 const fetch = require("node-fetch");
