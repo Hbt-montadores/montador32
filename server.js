@@ -22,7 +22,7 @@ const {
 
 const app = express();
 
-// INICIALIZAÇÃO CORRIGIDA E SIMPLIFICADA DO SENTRY
+// INICIALIZAÇÃO CORRETA E SIMPLIFICADA DO SENTRY
 Sentry.init({
   dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
   // Ativa o monitoramento de performance
@@ -31,10 +31,11 @@ Sentry.init({
 
 const port = process.env.PORT || 3000;
 
-// O request handler DEVE ser o primeiro middleware do app
-app.use(Sentry.Handlers.requestHandler());
-// Adiciona o middleware de tracing do Sentry
-app.use(Sentry.Handlers.tracingHandler());
+// O Sentry recomenda esta ordem:
+// 1. requestHandler
+// 2. Todas as outras rotas e middlewares
+// 3. errorHandler
+Sentry.setupExpressErrorHandler(app);
 
 app.set('trust proxy', 1);
 
