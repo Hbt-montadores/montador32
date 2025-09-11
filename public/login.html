@@ -6,27 +6,16 @@
     <title>Montador de Sermões - Login</title>
     <link rel="stylesheet" href="style.css">
 
-   <!-- ADICIONE ESTE BLOCO COMPLETO NO LUGAR DO ANTIGO -->
+   <!-- Novo bloco simplificado -->
 <script
   src="https://browser.sentry-cdn.com/7.117.0/bundle.min.js"
-    crossorigin="anonymous"
+  crossorigin="anonymous"
 ></script>
 <script>
   Sentry.init({
     dsn: "https://681f52ee4a2930c13a0fd8abc7b7487c@o4510002850824192.ingest.us.sentry.io/4507543892787200",
-    
-    // ATIVA O MODO DE DEPURAÇÃO PARA VERMOS O QUE O SENTRY ESTÁ FAZENDO
-    debug: true, 
-
-    // Opcional, mas boas práticas para monitoramento completo
-    integrations: [
-      Sentry.browserTracingIntegration(),
-      Sentry.replayIntegration(),
-    ],
-    tracesSampleRate: 1.0, 
-    replaysSessionSampleRate: 0.1,
-    replaysOnErrorSampleRate: 1.0, 
   });
+    
 </script>
     
     <!-- Bloco de código para o App ser instalável (PWA) -->
@@ -44,6 +33,7 @@
         });
       }
     </script>
+    
     <!-- Fim do Bloco PWA -->
 </head>
 <body>
