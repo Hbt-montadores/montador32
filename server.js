@@ -37,6 +37,7 @@ Sentry.init({
 const port = process.env.PORT || 3000;
 
 app.use(Sentry.Handlers.requestHandler());
+app.use(Sentry.Handlers.tracingHandler());
 
 app.set('trust proxy', 1);
 
