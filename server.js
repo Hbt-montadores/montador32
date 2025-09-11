@@ -1,7 +1,7 @@
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
 
-const { Sentry, Integrations } = require("@sentry/node");
+const Sentry = require("@sentry/node");
 const { ProfilingIntegration } = require("@sentry/profiling-node");
 const express = require("express");
 const path = require("path");
@@ -21,15 +21,13 @@ const {
     checkIfUserIsSubscribed, deletePushSubscription
 } = require('./db');
 
-// A definição do 'app' foi movida para ANTES do Sentry.init
 const app = express();
 
-// INICIALIZAÇÃO DO SENTRY PARA O BACKEND
 Sentry.init({
   dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
   integrations: [
-    new Integrations.Http({ tracing: true }),
-    new Integrations.Express({ app }),
+    new Sentry.Integrations.Http({ tracing: true }),
+    new Sentry.Integrations.Express({ app }),
     new ProfilingIntegration(),
   ],
   tracesSampleRate: 1.0,
@@ -38,7 +36,6 @@ Sentry.init({
 
 const port = process.env.PORT || 3000;
 
-// O request handler DEVE ser o primeiro middleware do app
 app.use(Sentry.Handlers.requestHandler());
 
 app.set('trust proxy', 1);
@@ -102,14 +99,12 @@ function requireLogin(req, res, next) {
 
 // --- 3. ROTAS PÚBLICAS (Login, Logout, Webhooks, Chave VAPID) ---
 
-// Rota de teste temporária para o Sentry
 app.get("/debug-sentry", function mainHandler(req, res) {
   throw new Error("Meu primeiro erro Sentry no Backend!");
 });
 
 const ALLOW_ANYONE = process.env.ALLOW_ANYONE === "true";
 
-// Rota para fornecer a chave pública VAPID ao frontend
 app.get('/api/vapid-public-key', (req, res) => {
     if (!process.env.VAPID_PUBLIC_KEY) {
         console.error("[BACKEND ERROR] VAPID_PUBLIC_KEY não está definida no ambiente.");
@@ -905,6 +900,9 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
         return res.status(500).json({ error: `Ocorreu um erro interno no servidor ao processar sua solicitação.` });
     }
 });
+
+// O error handler DEVE ser adicionado DEPOIS de todas as rotas e ANTES de qualquer outro middleware de erro.
+app.use(Sentry.Handlers.errorHandler());
 
 
 // --- 6. INICIALIZAÇÃO DO SERVIDOR ---
