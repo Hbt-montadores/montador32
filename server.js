@@ -26,10 +26,10 @@ const app = express();
 Sentry.init({
   dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
   integrations: [
-    new Sentry.Integrations.Http({ tracing: true }),
-    new Sentry.Integrations.Express({ app }),
+    // A integração do Profiling é a única que precisamos declarar aqui
     new ProfilingIntegration(),
   ],
+  // O monitoramento de performance é ativado pelas taxas de amostragem
   tracesSampleRate: 1.0,
   profilesSampleRate: 1.0,
 });
