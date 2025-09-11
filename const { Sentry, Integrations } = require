@@ -1,7 +1,7 @@
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
 
-const Sentry = require("@sentry/node");
+const { Sentry, Integrations } = require("@sentry/node");
 const { ProfilingIntegration } = require("@sentry/profiling-node");
 const express = require("express");
 const path = require("path");
@@ -28,8 +28,8 @@ const app = express();
 Sentry.init({
   dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
   integrations: [
-    new Sentry.Integrations.Http({ tracing: true }),
-    new Sentry.Integrations.Express({ app }), // Agora a variável 'app' já existe
+    new Integrations.Http({ tracing: true }),
+    new Integrations.Express({ app }),
     new ProfilingIntegration(),
   ],
   tracesSampleRate: 1.0,
