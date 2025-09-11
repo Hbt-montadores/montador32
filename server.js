@@ -2,7 +2,6 @@
 require("dotenv").config();
 
 const Sentry = require("@sentry/node");
-const { ProfilingIntegration } = require("@sentry/profiling-node");
 const express = require("express");
 const path = require("path");
 const fetch = require("node-fetch");
@@ -16,27 +15,25 @@ const webpush = require('web-push');
 const { 
     pool, getCustomerRecordByEmail, getCustomerRecordByPhone, getAccessControlRule,
     updateAnnualAccess, updateMonthlyStatus, updateLifetimeAccess, revokeAccessByInvoice,
-    logSentryActivity, updateGraceSermons, registerProspect,
+    logSermonActivity, updateGraceSermons, registerProspect,
     savePushSubscription, getAllPushSubscriptions,
     checkIfUserIsSubscribed, deletePushSubscription
 } = require('./db');
 
 const app = express();
 
+// INICIALIZAÇÃO CORRIGIDA E SIMPLIFICADA DO SENTRY
 Sentry.init({
   dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
-  integrations: [
-    // A integração do Profiling é a única que precisamos declarar aqui
-    new ProfilingIntegration(),
-  ],
-  // O monitoramento de performance é ativado pelas taxas de amostragem
+  // Ativa o monitoramento de performance
   tracesSampleRate: 1.0,
-  profilesSampleRate: 1.0,
 });
 
 const port = process.env.PORT || 3000;
 
+// O request handler DEVE ser o primeiro middleware do app
 app.use(Sentry.Handlers.requestHandler());
+// Adiciona o middleware de tracing do Sentry
 app.use(Sentry.Handlers.tracingHandler());
 
 app.set('trust proxy', 1);
