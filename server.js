@@ -7,7 +7,7 @@ Sentry.init({
   dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
   tracesSampleRate: 1.0,
 });
-
+Sentry.setupExpressErrorHandler(app);
 // ETAPA 2: CARREGAR O EXPRESS E OUTROS MÓDULOS DEPOIS DO SENTRY
 const express = require("express");
 const path = require("path");
@@ -31,8 +31,6 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // ETAPA 3: ADICIONAR OS HANDLERS DO SENTRY NO INÍCIO, LOGO APÓS A DEFINIÇÃO DO 'app'
-app.use(Sentry.Handlers.requestHandler());
-app.use(Sentry.Handlers.tracingHandler());
 
 app.set('trust proxy', 1);
 
@@ -898,7 +896,6 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
 });
 
 // ETAPA 4: ADICIONAR O ERROR HANDLER DO SENTRY NO FINAL
-app.use(Sentry.Handlers.errorHandler());
 
 
 // --- 6. INICIALIZAÇÃO DO SERVIDOR ---
