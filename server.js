@@ -1,16 +1,9 @@
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
 
-// ETAPA 1: INICIALIZAR O SENTRY PRIMEIRO DE TUDO
+// ETAPA 1: Carregar todos os módulos primeiro.
 const Sentry = require("@sentry/node");
-Sentry.init({
-  dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
-  tracesSampleRate: 1.0,
-});
-Sentry.setupExpressErrorHandler(app);
-// ETAPA 2: CARREGAR O EXPRESS E OUTROS MÓDULOS DEPOIS DO SENTRY
 const express = require("express");
-const app = express();
 const path = require("path");
 const fetch = require("node-fetch");
 const session = require("express-session");
@@ -28,9 +21,27 @@ const {
     checkIfUserIsSubscribed, deletePushSubscription
 } = require('./db');
 
+// ETAPA 2: Criar a aplicação Express.
+const app = express();
 const port = process.env.PORT || 3000;
 
-// ETAPA 3: ADICIONAR OS HANDLERS DO SENTRY NO INÍCIO, LOGO APÓS A DEFINIÇÃO DO 'app'
+// ETAPA 3: Inicializar o Sentry.
+Sentry.init({
+  dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
+  integrations: [
+    // Habilita a integração automática do Sentry com o Express.
+    new Sentry.Integrations.Express({ app }),
+  ],
+  tracesSampleRate: 1.0,
+});
+
+// ETAPA 4: Adicionar os Handlers do Sentry. ESTA É A ORDEM CORRETA.
+// O request handler DEVE ser o primeiro middleware do app.
+app.use(Sentry.Handlers.requestHandler());
+// O tracingHandler deve vir DEPOIS do requestHandler, mas ANTES de todas as rotas.
+app.use(Sentry.Handlers.tracingHandler());
+
+// --- A PARTIR DAQUI, SEGUEM SUAS CONFIGURAÇÕES E ROTAS NORMAIS ---
 
 app.set('trust proxy', 1);
 
@@ -91,7 +102,7 @@ function requireLogin(req, res, next) {
   }
 }
 
-// --- 3. ROTAS PÚBLICAS (Login, Logout, Webhooks, Chave VAPID) ---
+// --- 3. TODAS AS SUAS ROTAS VÊM AQUI ---
 
 app.get("/debug-sentry", function mainHandler(req, res) {
   throw new Error("Meu primeiro erro Sentry no Backend!");
@@ -113,6 +124,9 @@ app.get("/", (req, res) => {
     }
     res.sendFile(path.join(__dirname, "public", "login.html")); 
 });
+
+// ... [ TODO O RESTO DO SEU CÓDIGO DE ROTAS, SEM NENHUMA ALTERAÇÃO ] ...
+// ... (COLEI ABAIXO PARA GARANTIR QUE ESTÁ COMPLETO)
 
 app.get('/logout', (req, res) => {
   req.session.destroy(err => {
@@ -619,10 +633,9 @@ app.post("/admin/send-push-notification", async (req, res) => {
         
         const sendPromises = subscriptions.map(sub => 
             webpush.sendNotification(sub, payload).catch(err => {
-                // LÓGICA DE AUTOLIMPEZA ATUALIZADA
                 if (err.statusCode === 410) {
                     console.log('[BACKEND PUSH] Inscrição expirada detectada. Removendo...');
-                    return deletePushSubscription(sub); // Deleta a inscrição do banco de dados
+                    return deletePushSubscription(sub);
                 } else {
                     console.error("Falha ao enviar notificação:", err.body);
                 }
@@ -736,9 +749,6 @@ app.post("/api/subscribe-push", requireLogin, async (req, res) => {
     }
 });
 
-/**
- * NOVA ROTA: Verifica se o usuário logado já tem uma inscrição de notificação.
- */
 app.get("/api/check-push-subscription", requireLogin, async (req, res) => {
     try {
         const userEmail = req.session.user.email;
@@ -895,8 +905,8 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
     }
 });
 
-// ETAPA 4: ADICIONAR O ERROR HANDLER DO SENTRY NO FINAL
-
+// ETAPA 5: ADICIONAR O ERROR HANDLER DO SENTRY NO FINAL
+app.use(Sentry.Handlers.errorHandler());
 
 // --- 6. INICIALIZAÇÃO DO SERVIDOR ---
 app.listen(port, () => {
