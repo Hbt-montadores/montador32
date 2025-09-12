@@ -10,6 +10,7 @@ Sentry.init({
 Sentry.setupExpressErrorHandler(app);
 // ETAPA 2: CARREGAR O EXPRESS E OUTROS MÓDULOS DEPOIS DO SENTRY
 const express = require("express");
+const app = express();
 const path = require("path");
 const fetch = require("node-fetch");
 const session = require("express-session");
@@ -27,7 +28,6 @@ const {
     checkIfUserIsSubscribed, deletePushSubscription
 } = require('./db');
 
-const app = express();
 const port = process.env.PORT || 3000;
 
 // ETAPA 3: ADICIONAR OS HANDLERS DO SENTRY NO INÍCIO, LOGO APÓS A DEFINIÇÃO DO 'app'
