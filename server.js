@@ -1,8 +1,7 @@
+// server.js - Versão Final Definitiva com Sanitização de Data
+
 // --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
 require("dotenv").config();
-
-// ETAPA 1: Carregar todos os módulos primeiro.
-const Sentry = require("@sentry/node");
 const express = require("express");
 const path = require("path");
 const fetch = require("node-fetch");
@@ -11,55 +10,17 @@ const PgStore = require("connect-pg-simple")(session);
 const rateLimit = require('express-rate-limit');
 const fs = require('fs');
 const csv = require('csv-parser');
-const webpush = require('web-push');
 
 const { 
     pool, getCustomerRecordByEmail, getCustomerRecordByPhone, getAccessControlRule,
     updateAnnualAccess, updateMonthlyStatus, updateLifetimeAccess, revokeAccessByInvoice,
-    logSermonActivity, updateGraceSermons, registerProspect,
-    savePushSubscription, getAllPushSubscriptions,
-    checkIfUserIsSubscribed, deletePushSubscription
+    logSermonActivity, updateGraceSermons, registerProspect
 } = require('./db');
 
-// ETAPA 2: Criar a aplicação Express.
 const app = express();
 const port = process.env.PORT || 3000;
 
-// ETAPA 3: Inicializar o Sentry.
-Sentry.init({
-  dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
-  integrations: [
-    // Habilita a integração automática do Sentry com o Express.
-    new Sentry.Integrations.Express({ app }),
-  ],
-  tracesSampleRate: 1.0,
-});
-
-// ETAPA 4: Adicionar os Handlers do Sentry. ESTA É A ORDEM CORRETA.
-// O request handler DEVE ser o primeiro middleware do app.
-app.use(Sentry.Handlers.requestHandler());
-// O tracingHandler deve vir DEPOIS do requestHandler, mas ANTES de todas as rotas.
-app.use(Sentry.Handlers.tracingHandler());
-
-// --- A PARTIR DAQUI, SEGUEM SUAS CONFIGURAÇÕES E ROTAS NORMAIS ---
-
 app.set('trust proxy', 1);
-
-// Configuração do Web Push com as chaves VAPID
-const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
-const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
-const vapidMailto = process.env.VAPID_MAILTO;
-
-if (vapidPublicKey && vapidPrivateKey && vapidMailto) {
-    webpush.setVapidDetails(
-        `mailto:${vapidMailto}`,
-        vapidPublicKey,
-        vapidPrivateKey
-    );
-    console.log('[BACKEND] VAPID keys configuradas com sucesso para Web Push.');
-} else {
-    console.warn('[BACKEND WARN] Chaves VAPID não encontradas no ambiente. As notificações Push não funcionarão.');
-}
 
 // --- 2. MIDDLEWARES (Segurança, JSON, Sessão) ---
 
@@ -102,21 +63,9 @@ function requireLogin(req, res, next) {
   }
 }
 
-// --- 3. TODAS AS SUAS ROTAS VÊM AQUI ---
-
-app.get("/debug-sentry", function mainHandler(req, res) {
-  throw new Error("Meu primeiro erro Sentry no Backend!");
-});
+// --- 3. ROTAS PÚBLICAS (Login, Logout, Webhooks) ---
 
 const ALLOW_ANYONE = process.env.ALLOW_ANYONE === "true";
-
-app.get('/api/vapid-public-key', (req, res) => {
-    if (!process.env.VAPID_PUBLIC_KEY) {
-        console.error("[BACKEND ERROR] VAPID_PUBLIC_KEY não está definida no ambiente.");
-        return res.status(500).send("Configuração do servidor incompleta.");
-    }
-    res.send(process.env.VAPID_PUBLIC_KEY);
-});
 
 app.get("/", (req, res) => {
     if (req.session && req.session.user) {
@@ -125,13 +74,10 @@ app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "login.html")); 
 });
 
-// ... [ TODO O RESTO DO SEU CÓDIGO DE ROTAS, SEM NENHUMA ALTERAÇÃO ] ...
-// ... (COLEI ABAIXO PARA GARANTIR QUE ESTÁ COMPLETO)
-
 app.get('/logout', (req, res) => {
   req.session.destroy(err => {
     if (err) {
-        console.error("[BACKEND ERROR] Erro ao destruir sessão:", err);
+        console.error("Erro ao destruir sessão:", err);
         return res.redirect('/app');
     }
     res.clearCookie('connect.sid');
@@ -205,7 +151,7 @@ app.post("/login", loginLimiter, async (req, res) => {
             }
         }
     } catch (error) {
-        console.error("[BACKEND ERROR] Erro no processo de login por e-mail:", error);
+        console.error("Erro no processo de login por e-mail:", error);
         return res.status(500).send("<h1>Erro Interno</h1><p>Ocorreu um problema no servidor. Tente novamente mais tarde.</p>");
     }
 });
@@ -222,7 +168,7 @@ app.post("/login-by-phone", loginLimiter, async (req, res) => {
             return res.status(401).send(notFoundErrorMessageHTML);
         }
     } catch (error) {
-        console.error("[BACKEND ERROR] Erro no processo de login por celular:", error);
+        console.error("Erro no processo de login por celular:", error);
         return res.status(500).send("<h1>Erro Interno</h1><p>Ocorreu um problema no servidor. Tente novamente mais tarde.</p>");
     }
 });
@@ -330,14 +276,13 @@ const getAdminPanelHeader = (key, activePage) => {
             th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
             th { background-color: #f2f2f2; }
             tr:nth-child(even) { background-color: #fff; }
-            .nav-container, .actions-container, .filter-links, .push-container { margin-bottom: 20px; padding: 15px; background-color: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+            .nav-container, .actions-container, .filter-links { margin-bottom: 20px; padding: 15px; background-color: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
             .nav-links a, .filter-links a, .action-button, .import-links a { margin-right: 15px; text-decoration: none; color: #1565C0; font-weight: bold; }
             .nav-links a.active { text-decoration: underline; color: #D32F2F; }
             .filter-links a { padding: 8px 12px; border: 1px solid #1565C0; border-radius: 5px; }
             .filter-links a.active { background-color: #1565C0; color: white; }
             .action-button { background-color: #4CAF50; color: white; padding: 10px 15px; border-radius: 5px; }
             .action-button.danger { background-color: #f44336; }
-            .push-container input { width: 98%; padding: 8px; margin-bottom: 10px; }
         </style>
         <h1>Painel de Administração</h1>
         <div class="nav-container">
@@ -356,19 +301,6 @@ const getAdminPanelHeader = (key, activePage) => {
                 <a href="/admin/import-from-csv?key=${key}&plan_type=vitalicio">[Vitalícios]</a>
                 <a href="/admin/import-from-csv?key=${key}&plan_type=mensal">[Mensais]</a>
             </div>
-        </div>
-        <div class="push-container">
-            <h3>Enviar Notificação Push</h3>
-            <form action="/admin/send-push-notification" method="POST">
-                <input type="hidden" name="key" value="${key}">
-                <label for="push_title">Título:</label>
-                <input type="text" id="push_title" name="push_title" required placeholder="Ex: Novo sermão disponível!">
-                <label for="push_body">Corpo da Mensagem:</label>
-                <input type="text" id="push_body" name="push_body" required placeholder="Ex: Acesse agora e confira o novo sermão sobre a Fé.">
-                <label for="push_url">URL (link ao clicar):</label>
-                <input type="text" id="push_url" name="push_url" value="/app" required>
-                <button type="submit" class="action-button">Enviar para Todos</button>
-            </form>
         </div>
     `;
 };
@@ -406,11 +338,6 @@ app.get("/admin/view-data", async (req, res) => {
         if (message === 'grace_reset_ok') {
             html += `<p style="color: green; font-weight: bold; background-color: #e8f5e9; padding: 10px; border-radius: 5px;">Contadores de cortesia de todos os clientes foram zerados com sucesso!</p>`;
         }
-        if (message === 'push_sent_ok') {
-            const count = req.query.count || 0;
-            html += `<p style="color: green; font-weight: bold; background-color: #e8f5e9; padding: 10px; border-radius: 5px;">Notificação Push enviada com sucesso para ${count} dispositivo(s).</p>`;
-        }
-
 
         html += `
             <div class="filter-links">
@@ -443,7 +370,7 @@ app.get("/admin/view-data", async (req, res) => {
         html += '</table>';
         res.send(html);
     } catch (error) {
-        console.error("[BACKEND ERROR] Erro ao buscar dados de admin:", error);
+        console.error("Erro ao buscar dados de admin:", error);
         res.status(500).send("<h1>Erro ao buscar dados de administração.</h1>");
     }
 });
@@ -518,7 +445,7 @@ app.get("/admin/edit-customer", async (req, res) => {
         const data = { ...customer, ...accessRule, email };
         res.send(customerFormHTML(key, data));
     } catch (error) {
-        console.error("[BACKEND ERROR] Erro ao carregar formulário de edição:", error);
+        console.error("Erro ao carregar formulário de edição:", error);
         res.status(500).send("Erro interno ao carregar dados do cliente.");
     }
 });
@@ -566,7 +493,7 @@ app.post("/admin/create-customer", async (req, res) => {
         res.redirect(`/admin/view-data?key=${key}`);
     } catch (error) {
         await client.query('ROLLBACK');
-        console.error("[BACKEND ERROR] Erro ao criar cliente:", error);
+        console.error("Erro ao criar cliente:", error);
         res.status(500).send("Erro ao criar cliente.");
     } finally {
         client.release();
@@ -585,7 +512,7 @@ app.post("/admin/update-customer", async (req, res) => {
         res.redirect(`/admin/view-data?key=${key}`);
     } catch (error) {
         await client.query('ROLLBACK');
-        console.error("[BACKEND ERROR] Erro ao atualizar cliente:", error);
+        console.error("Erro ao atualizar cliente:", error);
         res.status(500).send("Erro ao atualizar dados do cliente.");
     } finally {
         client.release();
@@ -599,7 +526,7 @@ app.get("/admin/reset-grace", async (req, res) => {
         await pool.query('UPDATE customers SET grace_sermons_used = 0, updated_at = NOW()');
         res.redirect(`/admin/view-data?key=${key}&message=grace_reset_ok`);
     } catch (error) {
-        console.error("[BACKEND ERROR] Erro ao zerar contadores de cortesia:", error);
+        console.error("Erro ao zerar contadores de cortesia:", error);
         res.status(500).send("Erro ao executar a ação.");
     }
 });
@@ -619,101 +546,94 @@ app.get("/admin/view-activity", async (req, res) => {
         html += '</table>';
         res.send(html);
     } catch (error) {
-        console.error("[BACKEND ERROR] Erro ao buscar log de atividades:", error);
+        console.error("Erro ao buscar log de atividades:", error);
         res.status(500).send("<h1>Erro ao buscar dados do log.</h1>");
     }
 });
 
-app.post("/admin/send-push-notification", async (req, res) => {
-    const { key, push_title, push_body, push_url } = req.body;
-    if (key !== process.env.ADMIN_KEY) { return res.status(403).send("Acesso Negado"); }
-    try {
-        const subscriptions = await getAllPushSubscriptions();
-        const payload = JSON.stringify({ title: push_title, body: push_body, url: push_url });
-        
-        const sendPromises = subscriptions.map(sub => 
-            webpush.sendNotification(sub, payload).catch(err => {
-                if (err.statusCode === 410) {
-                    console.log('[BACKEND PUSH] Inscrição expirada detectada. Removendo...');
-                    return deletePushSubscription(sub);
-                } else {
-                    console.error("Falha ao enviar notificação:", err.body);
-                }
-            })
-        );
-        
-        await Promise.all(sendPromises);
-        res.redirect(`/admin/view-data?key=${key}&message=push_sent_ok&count=${subscriptions.length}`);
-    } catch (error) {
-        res.status(500).send("Erro ao enviar notificações.");
-    }
-});
-
+// ROTA DE IMPORTAÇÃO CSV (VERSÃO FINAL E OTIMIZADA PARA SUPABASE)
 app.get("/admin/import-from-csv", async (req, res) => {
     const { key, plan_type } = req.query;
     if (key !== process.env.ADMIN_KEY) { return res.status(403).send("<h1>Acesso Negado</h1>"); }
     if (!['anual', 'vitalicio', 'mensal'].includes(plan_type)) { return res.status(400).send("<h1>Tipo de plano inválido.</h1>"); }
     
-    const CSV_FILE_PATH = path.join(__dirname, 'lista-clientes.csv');
-    if (!fs.existsSync(CSV_FILE_PATH)) { return res.status(404).send("<h1>Erro: Arquivo 'lista-clientes.csv' não encontrado.</h1><p>Certifique-se de que o arquivo está na raiz do projeto e use ponto e vírgula (;) como separador.</p>"); }
-    
+    // ATENÇÃO: Confirme que esta é a URL correta do seu arquivo CSV bruto no GitHub
+    const CSV_URL = 'https://raw.githubusercontent.com/Hbt-montadores/montador32/main/lista-clientes.csv';
+
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.write(`<h1>Iniciando importação para plano: ${plan_type.toUpperCase()}...</h1>`);
 
-    const clientsToImport = [];
-    fs.createReadStream(CSV_FILE_PATH)
-      .pipe(csv({ separator: ';' }))
-      .on('data', (row) => { if (row['Cliente / E-mail']) { clientsToImport.push(row); }})
-      .on('end', async () => {
-        res.write(`<p>Leitura do CSV concluída. ${clientsToImport.length} linhas com e-mail encontradas para processar.</p><hr>`);
-        if (clientsToImport.length === 0) return res.end('<p>Nenhum cliente para importar. Encerrando.</p>');
+    try {
+        const response = await fetch(CSV_URL);
+        if (!response.ok) { throw new Error(`Falha ao baixar o CSV: ${response.statusText}`); }
 
-        const client = await pool.connect();
-        try {
-            res.write('<p>Iniciando transação com o banco de dados...</p><ul>');
-            await client.query('BEGIN');
-            
-            for (const customerData of clientsToImport) {
-                const email = customerData['Cliente / E-mail'].toLowerCase();
-                const name = customerData['Cliente / Nome'] || customerData['Cliente / Razão-Social'];
-                const phone = customerData['Cliente / Fones'];
-                
-                if (plan_type === 'anual') {
-                    const paymentDateStr = customerData['Data de Pagamento'];
-                    if (!paymentDateStr) continue;
-                    const [datePart, timePart] = paymentDateStr.split(' ');
-                    const [day, month, year] = datePart.split('/');
-                    const paymentDate = new Date(`${year}-${month}-${day}T${timePart || '00:00:00'}`);
-                    const expirationDate = new Date(paymentDate);
-                    expirationDate.setDate(expirationDate.getDate() + 365);
-                    await client.query(`INSERT INTO customers (email, name, phone, annual_expires_at, updated_at) VALUES ($1, $2, $3, $4, NOW()) ON CONFLICT (email) DO UPDATE SET name = COALESCE(EXCLUDED.name, customers.name), phone = COALESCE(EXCLUDED.phone, customers.phone), annual_expires_at = EXCLUDED.annual_expires_at, updated_at = NOW()`,[email, name, phone, expirationDate.toISOString()]);
-                } else if (plan_type === 'vitalicio') {
-                    const invoiceId = customerData['Fatura']; if (!invoiceId) continue;
-                    await client.query(`INSERT INTO access_control (email, permission, reason, product_id, invoice_id) VALUES ($1, 'allow', 'Importado via CSV', $2, $3) ON CONFLICT (email) DO NOTHING`, [email, customerData['ID do Produto'], invoiceId]);
-                    await client.query(`INSERT INTO customers (email, name, phone) VALUES ($1, $2, $3) ON CONFLICT (email) DO NOTHING`, [email, name, phone]);
-                } else if (plan_type === 'mensal') {
-                    const statusCsv = customerData['Status']?.toLowerCase(); if (!statusCsv) continue;
-                    let status;
-                    if (statusCsv.includes('paga') || statusCsv.includes('em dia')) status = 'paid';
-                    else if (statusCsv.includes('atrasado') || statusCsv.includes('vencida')) status = 'overdue';
-                    else if (statusCsv.includes('cancelada')) status = 'canceled';
-                    else continue;
-                    await client.query(`INSERT INTO customers (email, name, phone, monthly_status, updated_at) VALUES ($1, $2, $3, $4, NOW()) ON CONFLICT (email) DO UPDATE SET name = COALESCE(EXCLUDED.name, customers.name), phone = COALESCE(EXCLUDED.phone, customers.phone), monthly_status = EXCLUDED.monthly_status, updated_at = NOW()`, [email, name, phone, status]);
+        const clientsToImport = [];
+        // Etapa 1: Ler e processar o arquivo CSV da rede
+        response.body.pipe(csv({ separator: ';' }))
+            .on('data', (row) => { if (row['Cliente / E-mail']) { clientsToImport.push(row); } })
+            .on('end', async () => {
+                res.write(`<p>Leitura do CSV concluída: ${clientsToImport.length} clientes encontrados.</p><hr>`);
+                if (clientsToImport.length === 0) {
+                    return res.end('<p>Nenhum cliente para importar.</p>');
                 }
-            }
-            
-            await client.query('COMMIT');
-            res.end(`</ul><hr><h2>✅ Sucesso!</h2><p>A importação para o plano ${plan_type.toUpperCase()} foi concluída.</p>`);
-        } catch (e) {
-            await client.query('ROLLBACK');
-            res.end(`</ul><h2>❌ ERRO!</h2><p>Ocorreu um problema durante a importação. Nenhuma alteração foi salva (ROLLBACK).</p><pre>${e.stack}</pre>`);
-            console.error("[BACKEND ERROR] ERRO DE IMPORTAÇÃO CSV:", e);
-        } finally {
-            client.release();
-        }
-      });
-});
+                
+                // Etapa 2: Apenas AGORA, com os dados prontos, conectar ao banco
+                const client = await pool.connect();
+                try {
+                    res.write('<p>Iniciando transação com o banco de dados...</p><ul>');
+                    
+                    // Etapa 3: Executar a transação o mais rápido possível
+                    await client.query('BEGIN');
 
+                    for (const customerData of clientsToImport) {
+                        const email = customerData['Cliente / E-mail'].toLowerCase();
+                        const name = customerData['Cliente / Nome'] || customerData['Cliente / Razão-Social'];
+                        const phone = customerData['Cliente / Fones'];
+                        
+                        if (plan_type === 'anual') {
+                            const paymentDateStr = customerData['Data de Pagamento'];
+                            if (!paymentDateStr) continue;
+                            const [datePart, timePart] = paymentDateStr.split(' ');
+                            const [day, month, year] = datePart.split('/');
+                            const paymentDate = new Date(`${year}-${month}-${day}T${timePart || '00:00:00'}`);
+                            const expirationDate = new Date(paymentDate);
+                            expirationDate.setDate(expirationDate.getDate() + 365);
+                            await client.query(`INSERT INTO customers (email, name, phone, annual_expires_at, updated_at) VALUES ($1, $2, $3, $4, NOW()) ON CONFLICT (email) DO UPDATE SET name = COALESCE(EXCLUDED.name, customers.name), phone = COALESCE(EXCLUDED.phone, customers.phone), annual_expires_at = EXCLUDED.annual_expires_at, updated_at = NOW()`,[email, name, phone, expirationDate.toISOString()]);
+                        } else if (plan_type === 'vitalicio') {
+                            const invoiceId = customerData['Fatura']; if (!invoiceId) continue;
+                            await client.query(`INSERT INTO access_control (email, permission, reason, product_id, invoice_id) VALUES ($1, 'allow', 'Importado via CSV', $2, $3) ON CONFLICT (email) DO NOTHING`, [email, customerData['ID do Produto'], invoiceId]);
+                            await client.query(`INSERT INTO customers (email, name, phone) VALUES ($1, $2, $3) ON CONFLICT (email) DO NOTHING`, [email, name, phone]);
+                        } else if (plan_type === 'mensal') {
+                            const statusCsv = customerData['Status']?.toLowerCase(); if (!statusCsv) continue;
+                            let status;
+                            if (statusCsv.includes('paga') || statusCsv.includes('em dia')) status = 'paid';
+                            else if (statusCsv.includes('atrasado') || statusCsv.includes('vencida')) status = 'overdue';
+                            else if (statusCsv.includes('cancelada')) status = 'canceled';
+                            else continue;
+                            await client.query(`INSERT INTO customers (email, name, phone, monthly_status, updated_at) VALUES ($1, $2, $3, $4, NOW()) ON CONFLICT (email) DO UPDATE SET name = COALESCE(EXCLUDED.name, customers.name), phone = COALESCE(EXCLUDED.phone, customers.phone), monthly_status = EXCLUDED.monthly_status, updated_at = NOW()`, [email, name, phone, status]);
+                        }
+                    }
+
+                    // Etapa 4: Finalizar a transação
+                    await client.query('COMMIT');
+                    
+                    // Etapa 5: Só agora, com 100% de certeza, enviar a mensagem de sucesso
+                    res.end(`</ul><hr><h2>✅ Sucesso!</h2><p>A importação para o plano ${plan_type.toUpperCase()} foi concluída e os dados foram salvos.</p>`);
+
+                } catch (e) { 
+                    await client.query('ROLLBACK'); 
+                    console.error("ERRO DE IMPORTAÇÃO CSV (ROLLBACK EXECUTADO):", e);
+                    res.end(`</ul><h2>❌ ERRO!</h2><p>Ocorreu um problema durante a escrita no banco de dados. Nenhuma alteração foi salva.</p><pre>${e.stack}</pre>`);
+                } 
+                finally { 
+                    client.release(); 
+                }
+            });
+    } catch (error) {
+        console.error("Erro ao baixar o arquivo CSV:", error);
+        res.end(`<h2>❌ ERRO!</h2><p>Não foi possível baixar o arquivo CSV do GitHub. Verifique a URL e se o repositório é público.</p>`);
+    }
+});
 
 // --- 5. ROTAS PROTEGIDAS (App Principal) ---
 
@@ -729,35 +649,6 @@ app.post("/api/log-error", (req, res) => {
 
     console.error(`[FRONT-END LOG][Usuário: ${userEmail}][${level.toUpperCase()}]: ${message}`);
     res.status(200).send();
-});
-
-app.post("/api/subscribe-push", requireLogin, async (req, res) => {
-    const subscription = req.body;
-    const userEmail = req.session.user.email;
-    
-    if (!subscription || !subscription.endpoint) {
-        return res.status(400).json({ error: 'Objeto de inscrição inválido.' });
-    }
-
-    try {
-        await savePushSubscription(userEmail, subscription);
-        console.log(`[BACKEND PUSH] Inscrição salva com sucesso para o usuário: ${userEmail}`);
-        res.status(201).json({ message: 'Inscrição salva com sucesso.' });
-    } catch (error) {
-        console.error('[BACKEND ERROR] Erro ao salvar inscrição push:', error);
-        res.status(500).json({ error: 'Erro ao salvar a inscrição no servidor.' });
-    }
-});
-
-app.get("/api/check-push-subscription", requireLogin, async (req, res) => {
-    try {
-        const userEmail = req.session.user.email;
-        const isSubscribed = await checkIfUserIsSubscribed(userEmail);
-        res.json({ isSubscribed: isSubscribed });
-    } catch (error) {
-        console.error('[BACKEND ERROR] Falha ao verificar inscrição push:', error);
-        res.status(500).json({ error: 'Erro interno ao verificar a inscrição.' });
-    }
 });
 
 function getPromptConfig(sermonType, duration) {
@@ -900,13 +791,11 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
             res.json({ sermon: data.choices[0].message.content });
         }
     } catch (error) {
-        console.error("[BACKEND ERROR] Erro na API /api/next-step]", error);
+        console.error("[Erro na API /api/next-step]", error);
         return res.status(500).json({ error: `Ocorreu um erro interno no servidor ao processar sua solicitação.` });
     }
 });
 
-// ETAPA 5: ADICIONAR O ERROR HANDLER DO SENTRY NO FINAL
-app.use(Sentry.Handlers.errorHandler());
 
 // --- 6. INICIALIZAÇÃO DO SERVIDOR ---
 app.listen(port, () => {
