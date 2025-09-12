@@ -1,11 +1,17 @@
-// --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
+// --- 1. CONFIGURAÇÃO INICIAL E SENTRY ---
+// Sentry DEVE ser o primeiro módulo importado para funcionar corretamente.
 require("dotenv").config();
-
-// Sentry e suas integrações
 const Sentry = require("@sentry/node");
-const { ProfilingIntegration } = require("@sentry/profiling-node");
 
-// Restante das importações do seu projeto
+// INICIALIZE O SENTRY ANTES DE QUALQUER OUTRA COISA
+Sentry.init({
+  dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
+  tracesSampleRate: 1.0,
+  profilesSampleRate: 1.0, 
+});
+
+// --- 2. IMPORTAÇÕES DO RESTANTE DA APLICAÇÃO ---
+// Todas as outras importações vêm DEPOIS do Sentry.init().
 const express = require("express");
 const path = require("path");
 const fetch = require("node-fetch");
@@ -24,28 +30,17 @@ const {
     checkIfUserIsSubscribed, deletePushSubscription
 } = require('./db');
 
-// --- 2. CONFIGURAÇÃO DO EXPRESS (ANTES DO SENTRY.INIT) ---
+// --- 3. CONFIGURAÇÃO DO EXPRESS ---
 const app = express();
 const port = process.env.PORT || 3000;
 
-// --- 3. INICIALIZAÇÃO DO SENTRY (SINTAXE PARA V7) ---
-Sentry.init({
-  dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
-  integrations: [
-    new Sentry.Integrations.Http({ tracing: true }),
-    new Sentry.Integrations.Express({ app }), // Passar 'app' é necessário na v7
-    new ProfilingIntegration(),
-  ],
-  tracesSampleRate: 1.0,
-  profilesSampleRate: 1.0, 
-});
-
-// --- 4. MIDDLEWARES DO SENTRY E DA APLICAÇÃO ---
 // Os Handlers do Sentry DEVEM ser os primeiros middlewares do app.
 app.use(Sentry.Handlers.requestHandler());
 app.use(Sentry.Handlers.tracingHandler());
 
-// O restante dos seus middlewares
+
+// --- A PARTIR DAQUI, SEGUEM SUAS CONFIGURAÇÕES E ROTAS NORMAIS ---
+
 app.set('trust proxy', 1);
 
 // Configuração do Web Push
