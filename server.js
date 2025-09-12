@@ -3,7 +3,7 @@ require("dotenv").config();
 
 // ETAPA 1: IMPORTAR TODOS OS MÓDULOS PRIMEIRO
 const Sentry = require("@sentry/node");
-const { nodeProfilingIntegration } = require("@sentry/profiling-node");
+// O pacote de profiling NÃO é importado aqui. O Sentry o detecta automaticamente.
 
 const express = require("express");
 const path = require("path");
@@ -27,18 +27,13 @@ const {
 // ETAPA 2: INICIALIZAR O SENTRY
 Sentry.init({
   dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
+  // A chave "integrations" é OMITIDA. Sentry adicionará as integrações padrão
+  // (Express, Http, etc.) e a de profiling automaticamente.
   
-  // CORREÇÃO DEFINITIVA: Usamos uma função para adicionar nossa integração
-  // às integrações padrão, em vez de substituí-las.
-  integrations: [
-    // Habilita a instrumentação automática do Sentry para descobrir integrações de performance
-    Sentry.autoDiscoverNodePerformanceIntegrations(),
-    // Adiciona a integração de profiling
-    new nodeProfilingIntegration(),
-  ],
-  
+  // Esta linha ativa o rastreamento de performance (requisições, etc.)
   tracesSampleRate: 1.0,
-  profilesSampleRate: 1.0,
+  // Esta linha ativa o profiling, pois @sentry/profiling-node está instalado
+  profilesSampleRate: 1.0, 
 });
 
 
