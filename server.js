@@ -2,11 +2,9 @@
 require("dotenv").config();
 
 // ETAPA 1: IMPORTAR TODOS OS MÓDULOS PRIMEIRO
-// Sentry e suas integrações devem ser importados no topo.
 const Sentry = require("@sentry/node");
 const { ProfilingIntegration } = require("@sentry/profiling-node");
 
-// Restante das importações do seu projeto
 const express = require("express");
 const path = require("path");
 const fetch = require("node-fetch");
@@ -27,27 +25,24 @@ const {
 
 
 // ETAPA 2: INICIALIZAR O SENTRY
-// Isso deve acontecer ANTES da criação do `app` Express.
 Sentry.init({
   dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
   integrations: [
-    new Sentry.Integrations.Http({ tracing: true }), // Monitoramento de requisições HTTP
-    new Sentry.Integrations.Express(), // Integração automática com Express
-    new ProfilingIntegration(), // Integração para análise de performance
+    // CORREÇÃO: As integrações Http e Express são ativadas por padrão no Sentry v8.
+    // Não é necessário adicioná-las manualmente. Apenas adicionamos as que não são padrão.
+    new ProfilingIntegration(),
   ],
-  tracesSampleRate: 1.0, // Captura 100% das transações para performance. Reduza em produção se o volume for alto.
-  profilesSampleRate: 1.0, // Captura 100% dos perfis de performance.
+  tracesSampleRate: 1.0,
+  profilesSampleRate: 1.0,
 });
 
 
 // ETAPA 3: CRIAR A APLICAÇÃO EXPRESS
-// A variável `app` é criada somente APÓS a inicialização do Sentry.
 const app = express();
 const port = process.env.PORT || 3000;
 
 
 // ETAPA 4: ADICIONAR OS HANDLERS DO SENTRY
-// Estes devem ser os PRIMEIROS middlewares do app.
 app.use(Sentry.Handlers.requestHandler());
 app.use(Sentry.Handlers.tracingHandler());
 
@@ -115,7 +110,6 @@ function requireLogin(req, res, next) {
 
 // --- 3. ROTAS PÚBLICAS (Login, Logout, Webhooks, etc.) ---
 
-// Rota de teste para verificar a integração com o Sentry
 app.get("/debug-sentry", function mainHandler(req, res) {
   throw new Error("Meu primeiro erro Sentry no Backend está funcionando!");
 });
@@ -140,7 +134,7 @@ app.get("/", (req, res) => {
 app.get('/logout', (req, res) => {
   req.session.destroy(err => {
     if (err) {
-        Sentry.captureException(err); // Captura o erro
+        Sentry.captureException(err);
         console.error("[BACKEND ERROR] Erro ao destruir sessão:", err);
         return res.redirect('/app');
     }
@@ -215,7 +209,7 @@ app.post("/login", loginLimiter, async (req, res) => {
             }
         }
     } catch (error) {
-        Sentry.captureException(error); // Captura o erro
+        Sentry.captureException(error);
         console.error("[BACKEND ERROR] Erro no processo de login por e-mail:", error);
         return res.status(500).send("<h1>Erro Interno</h1><p>Ocorreu um problema no servidor. Tente novamente mais tarde.</p>");
     }
@@ -233,7 +227,7 @@ app.post("/login-by-phone", loginLimiter, async (req, res) => {
             return res.status(401).send(notFoundErrorMessageHTML);
         }
     } catch (error) {
-        Sentry.captureException(error); // Captura o erro
+        Sentry.captureException(error);
         console.error("[BACKEND ERROR] Erro no processo de login por celular:", error);
         return res.status(500).send("<h1>Erro Interno</h1><p>Ocorreu um problema no servidor. Tente novamente mais tarde.</p>");
     }
@@ -325,14 +319,15 @@ app.post("/eduzz/webhook", async (req, res) => {
         
         res.status(200).send("Webhook processado com sucesso.");
     } catch (error) {
-        Sentry.captureException(error); // Captura o erro
+        Sentry.captureException(error);
         console.error(`[Webhook-Erro] Falha ao processar webhook para [${cus_email}], evento [${event_name}].`, error);
         res.status(500).send("Erro interno ao processar o webhook.");
     }
 });
 
 // --- 4. ROTAS DE ADMINISTRAÇÃO ---
-
+// ... (O restante do seu código permanece exatamente o mesmo)
+// ... (Ele já está correto e com as capturas de erro do Sentry)
 const getAdminPanelHeader = (key, activePage) => {
     return `
         <style>
@@ -454,7 +449,7 @@ app.get("/admin/view-data", async (req, res) => {
         html += '</table>';
         res.send(html);
     } catch (error) {
-        Sentry.captureException(error); // Captura o erro
+        Sentry.captureException(error);
         console.error("[BACKEND ERROR] Erro ao buscar dados de admin:", error);
         res.status(500).send("<h1>Erro ao buscar dados de administração.</h1>");
     }
@@ -530,7 +525,7 @@ app.get("/admin/edit-customer", async (req, res) => {
         const data = { ...customer, ...accessRule, email };
         res.send(customerFormHTML(key, data));
     } catch (error) {
-        Sentry.captureException(error); // Captura o erro
+        Sentry.captureException(error);
         console.error("[BACKEND ERROR] Erro ao carregar formulário de edição:", error);
         res.status(500).send("Erro interno ao carregar dados do cliente.");
     }
@@ -579,7 +574,7 @@ app.post("/admin/create-customer", async (req, res) => {
         res.redirect(`/admin/view-data?key=${key}`);
     } catch (error) {
         await client.query('ROLLBACK');
-        Sentry.captureException(error); // Captura o erro
+        Sentry.captureException(error);
         console.error("[BACKEND ERROR] Erro ao criar cliente:", error);
         res.status(500).send("Erro ao criar cliente.");
     } finally {
@@ -599,7 +594,7 @@ app.post("/admin/update-customer", async (req, res) => {
         res.redirect(`/admin/view-data?key=${key}`);
     } catch (error) {
         await client.query('ROLLBACK');
-        Sentry.captureException(error); // Captura o erro
+        Sentry.captureException(error);
         console.error("[BACKEND ERROR] Erro ao atualizar cliente:", error);
         res.status(500).send("Erro ao atualizar dados do cliente.");
     } finally {
@@ -614,7 +609,7 @@ app.get("/admin/reset-grace", async (req, res) => {
         await pool.query('UPDATE customers SET grace_sermons_used = 0, updated_at = NOW()');
         res.redirect(`/admin/view-data?key=${key}&message=grace_reset_ok`);
     } catch (error) {
-        Sentry.captureException(error); // Captura o erro
+        Sentry.captureException(error);
         console.error("[BACKEND ERROR] Erro ao zerar contadores de cortesia:", error);
         res.status(500).send("Erro ao executar a ação.");
     }
@@ -635,7 +630,7 @@ app.get("/admin/view-activity", async (req, res) => {
         html += '</table>';
         res.send(html);
     } catch (error) {
-        Sentry.captureException(error); // Captura o erro
+        Sentry.captureException(error);
         console.error("[BACKEND ERROR] Erro ao buscar log de atividades:", error);
         res.status(500).send("<h1>Erro ao buscar dados do log.</h1>");
     }
@@ -654,7 +649,7 @@ app.post("/admin/send-push-notification", async (req, res) => {
                     console.log('[BACKEND PUSH] Inscrição expirada detectada. Removendo...');
                     return deletePushSubscription(sub);
                 } else {
-                    Sentry.captureException(err); // Captura outros erros de envio
+                    Sentry.captureException(err);
                     console.error("Falha ao enviar notificação:", err.body);
                 }
             })
@@ -663,7 +658,7 @@ app.post("/admin/send-push-notification", async (req, res) => {
         await Promise.all(sendPromises);
         res.redirect(`/admin/view-data?key=${key}&message=push_sent_ok&count=${subscriptions.length}`);
     } catch (error) {
-        Sentry.captureException(error); // Captura o erro
+        Sentry.captureException(error);
         res.status(500).send("Erro ao enviar notificações.");
     }
 });
@@ -725,7 +720,7 @@ app.get("/admin/import-from-csv", async (req, res) => {
             res.end(`</ul><hr><h2>✅ Sucesso!</h2><p>A importação para o plano ${plan_type.toUpperCase()} foi concluída.</p>`);
         } catch (e) {
             await client.query('ROLLBACK');
-            Sentry.captureException(e); // Captura o erro
+            Sentry.captureException(e);
             res.end(`</ul><h2>❌ ERRO!</h2><p>Ocorreu um problema durante a importação. Nenhuma alteração foi salva (ROLLBACK).</p><pre>${e.stack}</pre>`);
             console.error("[BACKEND ERROR] ERRO DE IMPORTAÇÃO CSV:", e);
         } finally {
@@ -763,7 +758,7 @@ app.post("/api/subscribe-push", requireLogin, async (req, res) => {
         console.log(`[BACKEND PUSH] Inscrição salva com sucesso para o usuário: ${userEmail}`);
         res.status(201).json({ message: 'Inscrição salva com sucesso.' });
     } catch (error) {
-        Sentry.captureException(error); // Captura o erro
+        Sentry.captureException(error);
         console.error('[BACKEND ERROR] Erro ao salvar inscrição push:', error);
         res.status(500).json({ error: 'Erro ao salvar a inscrição no servidor.' });
     }
@@ -775,7 +770,7 @@ app.get("/api/check-push-subscription", requireLogin, async (req, res) => {
         const isSubscribed = await checkIfUserIsSubscribed(userEmail);
         res.json({ isSubscribed: isSubscribed });
     } catch (error) {
-        Sentry.captureException(error); // Captura o erro
+        Sentry.captureException(error);
         console.error('[BACKEND ERROR] Falha ao verificar inscrição push:', error);
         res.status(500).json({ error: 'Erro interno ao verificar a inscrição.' });
     }
@@ -921,15 +916,13 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
             res.json({ sermon: data.choices[0].message.content });
         }
     } catch (error) {
-        Sentry.captureException(error); // Captura o erro
+        Sentry.captureException(error);
         console.error("[BACKEND ERROR] Erro na API /api/next-step]", error);
         return res.status(500).json({ error: `Ocorreu um erro interno no servidor ao processar sua solicitação.` });
     }
 });
 
 // ETAPA 5: ADICIONAR O ERROR HANDLER DO SENTRY
-// Este DEVE ser o último middleware, antes do `app.listen`.
-// Ele captura erros que não foram tratados em nenhuma rota.
 app.use(Sentry.Handlers.errorHandler());
 
 // --- 6. INICIALIZAÇÃO DO SERVIDOR ---
