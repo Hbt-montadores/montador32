@@ -3,8 +3,8 @@ require("dotenv").config();
 
 // ETAPA 1: IMPORTAR TODOS OS MÓDULOS PRIMEIRO
 const Sentry = require("@sentry/node");
-// CORREÇÃO: A importação do ProfilingIntegration não usa chaves {}.
-const ProfilingIntegration = require("@sentry/profiling-node");
+// CORREÇÃO DEFINITIVA: O nome correto da integração é "nodeProfilingIntegration".
+const { nodeProfilingIntegration } = require("@sentry/profiling-node");
 
 const express = require("express");
 const path = require("path");
@@ -29,9 +29,8 @@ const {
 Sentry.init({
   dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
   integrations: [
-    // As integrações Http e Express são ativadas por padrão no Sentry v8.
-    // Apenas adicionamos as que não são padrão, como a de Profiling.
-    new ProfilingIntegration(),
+    // Usando o nome correto da integração.
+    new nodeProfilingIntegration(),
   ],
   tracesSampleRate: 1.0,
   profilesSampleRate: 1.0,
@@ -327,6 +326,7 @@ app.post("/eduzz/webhook", async (req, res) => {
 });
 
 // --- 4. ROTAS DE ADMINISTRAÇÃO ---
+
 const getAdminPanelHeader = (key, activePage) => {
     return `
         <style>
