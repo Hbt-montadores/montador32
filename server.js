@@ -1,10 +1,17 @@
-// --- 1. IMPORTAÇÕES E CONFIGURAÇÃO INICIAL ---
+// --- 1. CONFIGURAÇÃO INICIAL E SENTRY ---
+// Sentry DEVE ser o primeiro módulo importado para funcionar corretamente.
 require("dotenv").config();
-
-// ETAPA 1: IMPORTAR TODOS OS MÓDULOS PRIMEIRO
 const Sentry = require("@sentry/node");
-// O pacote de profiling NÃO é importado aqui. O Sentry o detecta automaticamente.
 
+// INICIALIZE O SENTRY ANTES DE QUALQUER OUTRA COISA
+Sentry.init({
+  dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
+  tracesSampleRate: 1.0,
+  profilesSampleRate: 1.0, 
+});
+
+// --- 2. IMPORTAÇÕES DO RESTANTE DA APLICAÇÃO ---
+// Todas as outras importações vêm DEPOIS do Sentry.init().
 const express = require("express");
 const path = require("path");
 const fetch = require("node-fetch");
@@ -23,26 +30,11 @@ const {
     checkIfUserIsSubscribed, deletePushSubscription
 } = require('./db');
 
-
-// ETAPA 2: INICIALIZAR O SENTRY
-Sentry.init({
-  dsn: "https://3f1ba888a405e00e37691801ce9fa998@o4510002850824192.ingest.us.sentry.io/4510003238141952",
-  // A chave "integrations" é OMITIDA. Sentry adicionará as integrações padrão
-  // (Express, Http, etc.) e a de profiling automaticamente.
-  
-  // Esta linha ativa o rastreamento de performance (requisições, etc.)
-  tracesSampleRate: 1.0,
-  // Esta linha ativa o profiling, pois @sentry/profiling-node está instalado
-  profilesSampleRate: 1.0, 
-});
-
-
-// ETAPA 3: CRIAR A APLICAÇÃO EXPRESS
+// --- 3. CONFIGURAÇÃO DO EXPRESS ---
 const app = express();
 const port = process.env.PORT || 3000;
 
-
-// ETAPA 4: ADICIONAR OS HANDLERS DO SENTRY
+// Os Handlers do Sentry DEVEM ser os primeiros middlewares do app.
 app.use(Sentry.Handlers.requestHandler());
 app.use(Sentry.Handlers.tracingHandler());
 
@@ -67,8 +59,7 @@ if (vapidPublicKey && vapidPrivateKey && vapidMailto) {
     console.warn('[BACKEND WARN] Chaves VAPID não encontradas no ambiente. As notificações Push não funcionarão.');
 }
 
-// --- 2. MIDDLEWARES (Segurança, JSON, Sessão) ---
-
+// Middlewares (Segurança, JSON, Sessão)
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/healthz", (req, res) => res.status(200).send("OK"));
 app.use(express.urlencoded({ extended: true }));
@@ -108,7 +99,7 @@ function requireLogin(req, res, next) {
   }
 }
 
-// --- 3. ROTAS PÚBLICAS (Login, Logout, Webhooks, etc.) ---
+// --- ROTAS DA APLICAÇÃO ---
 
 app.get("/debug-sentry", function mainHandler(req, res) {
   throw new Error("Meu primeiro erro Sentry no Backend está funcionando!");
@@ -921,10 +912,11 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
     }
 });
 
-// ETAPA 5: ADICIONAR O ERROR HANDLER DO SENTRY
+// --- ÚLTIMO MIDDLEWARE: ERROR HANDLER DO SENTRY ---
+// O Error Handler do Sentry deve vir DEPOIS de todas as rotas e ANTES de qualquer outro middleware de erro.
 app.use(Sentry.Handlers.errorHandler());
 
-// --- 6. INICIALIZAÇÃO DO SERVIDOR ---
+// --- INICIALIZAÇÃO DO SERVIDOR ---
 app.listen(port, () => {
     console.log(`🚀 Servidor rodando com sucesso na porta ${port}`);
 });
