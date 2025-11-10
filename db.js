@@ -6,7 +6,12 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: isProduction ? { rejectUnauthorized: false } : false
+  ssl: isProduction ? { rejectUnauthorized: false } : false,
+  // === INÍCIO DAS ALTERAÇÕES SOLICITADAS ===
+  connectionTimeoutMillis: 3000, // Timeout para aquisição de uma nova conexão (3 segundos)
+  idleTimeoutMillis: 10000,     // Timeout para encerramento de clientes ociosos (10 segundos)
+  max: 10,                      // Limite explícito para o número máximo de clientes no pool
+  // === FIM DAS ALTERAÇÕES SOLICITADAS ===
 });
 
 // ===================================================================
