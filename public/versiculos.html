@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Versículos para Ocasiões - Montador de Sermões 3.3</title>
+    <title>Montador de Sermões 3.3 - Versículos para Ocasiões</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="/manifest.json">
     <script src="pwa-installer.js" defer></script>
@@ -20,12 +20,20 @@
         .versiculos-section {
             margin-top: 20px;
         }
+
+        .subtitle-verses {
+            margin-top: 4px;
+            font-size: 1.05rem;
+            font-weight: 500;
+        }
+
         .category-buttons {
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
             margin-top: 15px;
         }
+
         .category-buttons button {
             padding: 10px 16px;
             font-size: 1rem;
@@ -33,45 +41,67 @@
             border: none;
             cursor: pointer;
         }
+
         #verses-screen {
             margin-top: 20px;
         }
+
         .verses-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 15px;
         }
-        .verses-header button,
-        .verses-header a {
-            padding: 8px 14px;
-            font-size: 0.95rem;
-            border-radius: 8px;
-            text-decoration: none;
+
+        .back-app-button {
+            background-color: #FF6B00;
+            color: #ffffff;
             border: none;
+            border-radius: 999px;
+            padding: 8px 16px;
+            font-size: 0.95rem;
+            font-weight: 600;
             cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.25);
+            white-space: nowrap;
         }
+
+        .back-app-button:focus {
+            outline: none;
+        }
+
+        .verses-header-spacer {
+            flex: 1;
+        }
+
         #selected-category-title {
             font-size: 1.4rem;
             margin-bottom: 12px;
         }
+
         .verses-container {
             margin-bottom: 16px;
         }
+
         .verses-text {
             white-space: pre-wrap;
-            font-size: 1rem;
-            line-height: 1.5;
-            padding: 12px;
+            font-size: 1.1rem;
+            line-height: 1.7;
+            padding: 14px;
             border-radius: 8px;
             background-color: #f9f9f9;
         }
+
         .verses-actions {
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
-            margin-top: 8px;
+            margin-top: 12px;
         }
+
         .verses-actions button {
             padding: 10px 18px;
             font-size: 1rem;
@@ -84,9 +114,12 @@
 <body>
     <div class="container">
         <header class="app-header">
-            <h1>Versículos para Ocasiões - Montador de Sermões 3.3</h1>
+            <h1>Montador de Sermões 3.3</h1>
+            <p class="subtitle-verses">Versículos para Ocasiões</p>
             <div class="header-actions">
-                <a href="/app" class="logout-link">Voltar para Montador de Sermões</a>
+                <button type="button" class="back-app-button" onclick="window.location.href='/app'">
+                    ← Voltar para o Montador
+                </button>
             </div>
         </header>
 
@@ -118,8 +151,13 @@
 
             <section id="verses-screen" class="versiculos-section" style="display: none;">
                 <div class="verses-header">
-                    <button type="button" id="back-button">Voltar</button>
-                    <button type="button" onclick="window.location.href='/app'">Ir para Montador de Sermões</button>
+                    <button type="button" id="back-button" class="back-app-button">
+                        ← Voltar
+                    </button>
+                    <div class="verses-header-spacer"></div>
+                    <button type="button" class="back-app-button" onclick="window.location.href='/app'">
+                        ← Ir para o Montador
+                    </button>
                 </div>
 
                 <div id="verses-container" class="verses-container">
