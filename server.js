@@ -721,6 +721,10 @@ app.get("/admin/import-from-csv", async (req, res) => {
 
 // --- 5. ROTAS PROTEGIDAS (App Principal) ---
 
+app.get("/versiculos", requireLogin, (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "versiculos.html"));
+});
+
 app.get("/app", requireLogin, (req, res) => {
     res.sendFile(path.join(__dirname, "public", "app.html"));
 });
