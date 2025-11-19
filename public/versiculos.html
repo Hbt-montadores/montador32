@@ -16,6 +16,70 @@
         dsn: "https://681f52ee4a2930c13a0fd8abc7b7487c@o4510002850824192.ingest.us.sentry.io/4510002863407104",
       });
     </script>
+    <style>
+        .versiculos-section {
+            margin-top: 20px;
+        }
+        .category-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .category-buttons button {
+            padding: 10px 16px;
+            font-size: 1rem;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+        }
+        #verses-screen {
+            margin-top: 20px;
+        }
+        .verses-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .verses-header button,
+        .verses-header a {
+            padding: 8px 14px;
+            font-size: 0.95rem;
+            border-radius: 8px;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+        }
+        #selected-category-title {
+            font-size: 1.4rem;
+            margin-bottom: 12px;
+        }
+        .verses-container {
+            margin-bottom: 16px;
+        }
+        .verses-text {
+            white-space: pre-wrap;
+            font-size: 1rem;
+            line-height: 1.5;
+            padding: 12px;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        .verses-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 8px;
+        }
+        .verses-actions button {
+            padding: 10px 18px;
+            font-size: 1rem;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -27,7 +91,7 @@
         </header>
 
         <main>
-            <section class="versiculos-section">
+            <section id="categories-screen" class="versiculos-section">
                 <p>Escolha uma categoria para visualizar os versículos correspondentes:</p>
 
                 <div id="category-buttons" class="category-buttons">
@@ -50,15 +114,23 @@
                     <button type="button" data-category="Ceia do Senhor">Ceia do Senhor</button>
                     <button type="button" data-category="Bênção Apostólica">Bênção Apostólica</button>
                 </div>
+            </section>
 
-                <div id="verses-container" class="verses-container" style="display: none;">
+            <section id="verses-screen" class="versiculos-section" style="display: none;">
+                <div class="verses-header">
+                    <button type="button" id="back-button">Voltar</button>
+                    <button type="button" onclick="window.location.href='/app'">Ir para Montador de Sermões</button>
+                </div>
+
+                <div id="verses-container" class="verses-container">
                     <h2 id="selected-category-title"></h2>
                     <pre id="verses-text" class="verses-text"></pre>
+                </div>
 
-                    <div class="verses-actions">
-                        <button type="button" id="copy-button">Copiar texto</button>
-                        <button type="button" id="whatsapp-button">Enviar por WhatsApp</button>
-                    </div>
+                <div class="verses-actions">
+                    <button type="button" id="copy-button">Copiar</button>
+                    <button type="button" id="whatsapp-button">Enviar WhatsApp</button>
+                    <button type="button" onclick="window.location.href='/app'">Ir para Montador de Sermões</button>
                 </div>
             </section>
         </main>
