@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Montador de Sermões 3.2</title>
 
-  <!-- BLOCO DE CÓDIGO FINAL E CORRIGIDO -->
 <script
   src="https://browser.sentry-cdn.com/7.117.0/bundle.min.js"
   crossorigin="anonymous"
@@ -30,7 +29,6 @@
         <header class="app-header">
             <h1>Montador de Sermões 3.2</h1>
             <div class="header-actions">
-                <!-- O botão de instalação agora está presente no HTML, como esperado pelo script -->
                 <button id="install-button" class="install-button" style="display: none;">Instalar App</button>
                 <a href="/logout" class="logout-link">Sair</a>
             </div>
@@ -51,21 +49,16 @@
                 <p id="loading-text">Gerando seu sermão, por favor aguarde...</p>
             </div>
 
-            <div id="sermon-result" style="display: none;">
-                <!-- O conteúdo do sermão será injetado aqui pelo script.js -->
-            </div>
+            <div id="sermon-result" style="display: none;"></div>
             
-            <div id="error-container" style="display: none;">
-                <!-- Mensagens de erro serão injetadas aqui pelo script.js -->
-            </div>
+            <div id="error-container" style="display: none;"></div>
 
         </main>
     </div>
 
-    <!-- Biblioteca para gerar PDF no navegador -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    
-    <!-- Script principal da aplicação -->
-    <script src="script.js"></script>
+
+    <script src="/versiculos.js"></script>
+    <script src="/script.js"></script>
 </body>
 </html>
