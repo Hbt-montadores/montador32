@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Versículos para Ocasiões - Montador de Sermões 3.3</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="/manifest.json">
+    <script src="pwa-installer.js" defer></script>
+    <script
+      src="https://browser.sentry-cdn.com/7.117.0/bundle.min.js"
+      crossorigin="anonymous"
+    ></script>
+    <script>
+      Sentry.init({
+        dsn: "https://681f52ee4a2930c13a0fd8abc7b7487c@o4510002850824192.ingest.us.sentry.io/4510002863407104",
+      });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <header class="app-header">
+            <h1>Versículos para Ocasiões - Montador de Sermões 3.3</h1>
+            <div class="header-actions">
+                <a href="/app" class="logout-link">Voltar para Montador de Sermões</a>
+            </div>
+        </header>
+
+        <main>
+            <section class="versiculos-section">
+                <p>Escolha uma categoria para visualizar os versículos correspondentes:</p>
+
+                <div id="category-buttons" class="category-buttons">
+                    <button type="button" data-category="Hospital">Hospital</button>
+                    <button type="button" data-category="Pós-operatório">Pós-operatório</button>
+                    <button type="button" data-category="Velórios">Velórios</button>
+                    <button type="button" data-category="Luto recente">Luto recente</button>
+                    <button type="button" data-category="Crise conjugal">Crise conjugal</button>
+                    <button type="button" data-category="Problemas financeiros">Problemas financeiros</button>
+                    <button type="button" data-category="Depressão / Ansiedade">Depressão / Ansiedade</button>
+                    <button type="button" data-category="Reconciliação">Reconciliação</button>
+                    <button type="button" data-category="Aconselhamento Rápido">Aconselhamento Rápido</button>
+                    <button type="button" data-category="Visitas familiares">Visitas familiares</button>
+                    <button type="button" data-category="Aniversário Geral">Aniversário Geral</button>
+                    <button type="button" data-category="Aniversário de Criança">Aniversário de Criança</button>
+                    <button type="button" data-category="Aniversário de 15 anos">Aniversário de 15 anos</button>
+                    <button type="button" data-category="Aniversário de Casamento">Aniversário de Casamento</button>
+                    <button type="button" data-category="Aniversário da Igreja">Aniversário da Igreja</button>
+                    <button type="button" data-category="Batismo">Batismo</button>
+                    <button type="button" data-category="Ceia do Senhor">Ceia do Senhor</button>
+                    <button type="button" data-category="Bênção Apostólica">Bênção Apostólica</button>
+                </div>
+
+                <div id="verses-container" class="verses-container" style="display: none;">
+                    <h2 id="selected-category-title"></h2>
+                    <pre id="verses-text" class="verses-text"></pre>
+
+                    <div class="verses-actions">
+                        <button type="button" id="copy-button">Copiar texto</button>
+                        <button type="button" id="whatsapp-button">Enviar por WhatsApp</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/versiculos.js"></script>
+</body>
+</html>
