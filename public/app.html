@@ -5,16 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Montador de Sermões 3.3</title>
 
-  <!-- BLOCO DE CÓDIGO FINAL E CORRIGIDO -->
-<script
-  src="https://browser.sentry-cdn.com/7.117.0/bundle.min.js"
-  crossorigin="anonymous"
-></script>
-<script>
-  Sentry.init({
-    dsn: "https://681f52ee4a2930c13a0fd8abc7b7487c@o4510002850824192.ingest.us.sentry.io/4510002863407104",
-  });
-</script>
+    <script
+      src="https://browser.sentry-cdn.com/7.117.0/bundle.min.js"
+      crossorigin="anonymous"
+    ></script>
+    <script>
+      Sentry.init({
+        dsn: "https://681f52ee4a2930c13a0fd8abc7b7487c@o4510002850824192.ingest.us.sentry.io/4510002863407104",
+      });
+    </script>
     
     <meta name="theme-color" content="#2196F3">
     <link rel="manifest" href="manifest.json">
@@ -23,6 +22,29 @@
     <script src="pwa-installer.js" defer></script>
     
     <link rel="stylesheet" href="style.css">
+
+    <style>
+        .verses-header-button {
+            background-color: #FF6B00;
+            color: #ffffff;
+            border: none;
+            border-radius: 999px;
+            padding: 8px 16px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.25);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-right: 12px;
+            white-space: nowrap;
+        }
+        .verses-header-button:focus {
+            outline: none;
+        }
+    </style>
 </head>
 <body>
 
@@ -31,12 +53,10 @@
             <h1>Montador de Sermões 3.3</h1>
             <div class="header-actions">
 
-                <!-- Link discreto novo -->
-                <a href="/versiculos" class="logout-link" style="margin-right: 15px; font-size: 14px;">
-                    Versículos (Novo)
-                </a>
+                <button id="verses-header-button" class="verses-header-button">
+                    📖 Versículos (Novo)
+                </button>
 
-                <!-- Botão já existente -->
                 <button id="install-button" class="install-button" style="display: none;">Instalar App</button>
 
                 <a href="/logout" class="logout-link">Sair</a>
@@ -59,20 +79,25 @@
             </div>
 
             <div id="sermon-result" style="display: none;">
-                <!-- O conteúdo do sermão será injetado aqui pelo script.js -->
             </div>
             
             <div id="error-container" style="display: none;">
-                <!-- Mensagens de erro serão injetadas aqui pelo script.js -->
             </div>
 
         </main>
     </div>
 
-    <!-- Biblioteca para gerar PDF no navegador -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    
-    <!-- Script principal da aplicação -->
     <script src="script.js"></script>
+    <script>
+        (function() {
+            var versesBtn = document.getElementById('verses-header-button');
+            if (versesBtn) {
+                versesBtn.addEventListener('click', function() {
+                    window.location.href = '/versiculos';
+                });
+            }
+        })();
+    </script>
 </body>
 </html>
