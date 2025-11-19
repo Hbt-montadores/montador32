@@ -376,6 +376,9 @@ A graça do Senhor Jesus é a palavra final para a igreja.
 
 document.addEventListener("DOMContentLoaded", () => {
     const categoryButtons = document.querySelectorAll("#category-buttons button");
+    const categoriesScreen = document.getElementById("categories-screen");
+    const versesScreen = document.getElementById("verses-screen");
+    const backButton = document.getElementById("back-button");
     const versesContainer = document.getElementById("verses-container");
     const selectedCategoryTitle = document.getElementById("selected-category-title");
     const versesTextElement = document.getElementById("verses-text");
@@ -398,9 +401,11 @@ document.addEventListener("DOMContentLoaded", () => {
             versesTextElement.textContent = "Nenhum versículo cadastrado para esta categoria ainda.";
         }
 
-        versesContainer.style.display = "block";
+        categoriesScreen.style.display = "none";
+        versesScreen.style.display = "block";
+
         window.scrollTo({
-            top: versesContainer.offsetTop - 20,
+            top: 0,
             behavior: "smooth"
         });
     }
@@ -409,6 +414,19 @@ document.addEventListener("DOMContentLoaded", () => {
         button.addEventListener("click", () => {
             const category = button.getAttribute("data-category");
             showCategory(category);
+        });
+    });
+
+    backButton.addEventListener("click", () => {
+        versesScreen.style.display = "none";
+        categoriesScreen.style.display = "block";
+        currentCategory = "";
+        currentText = "";
+        selectedCategoryTitle.textContent = "";
+        versesTextElement.textContent = "";
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth"
         });
     });
 
