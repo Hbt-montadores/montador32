@@ -9,20 +9,42 @@
     
     <script src="pwa-installer.js" defer></script>
 
-<script
-  src="https://browser.sentry-cdn.com/7.117.0/bundle.min.js"
-  crossorigin="anonymous"
-></script>
-<script>
-  Sentry.init({
-    dsn: "https://681f52ee4a2930c13a0fd8abc7b7487c@o4510002850824192.ingest.us.sentry.io/4510002863407104",
-  });
-</script>
+    <!-- BLOCO DE CÓDIGO FINAL E CORRIGIDO -->
+    <script
+      src="https://browser.sentry-cdn.com/7.117.0/bundle.min.js"
+      crossorigin="anonymous"
+    ></script>
+    <script>
+      Sentry.init({
+        dsn: "https://681f52ee4a2930c13a0fd8abc7b7487c@o4510002850824192.ingest.us.sentry.io/4510002863407104",
+      });
+    </script>
+
+    <style>
+        .verses-button {
+            margin-top: 20px;
+            background-color: #FF6B00;
+            color: #ffffff;
+            border: none;
+            border-radius: 999px;
+            padding: 14px 24px;
+            font-size: 1.05rem;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            max-width: 360px;
+        }
+    </style>
     
 </head>
 <body>
     <header>
-        <img src="https://cdn.glitch.global/db74bd9b-d683-421c-9223-f55b917c9dce/logo.png?v=1734385573934" alt="Logo do Montador de Sermões 3.3" class="logo">
+        <img src="https://cdn.glitch.global/db74bd9b-d683-421c-994e-9974e97a4e55/montador-de-sermoes-logo.png?v=1734385573934" alt="Logo do Montador de Sermões 3.3" class="logo">
     </header>
     
     <div class="welcome-container">
@@ -31,17 +53,18 @@
         
         <button id="start-button" class="start-button">Começar a Usar</button>
 
-        <br><br>
-
-        <a href="/versiculos" class="start-button" style="background:#4CAF50;">
-            Versículos para Ocasiões (Novo)
-        </a>
+        <button id="verses-button" class="verses-button">
+            📖 Versículos para Ocasiões (Novo)
+        </button>
     </div>
 
     <script>
+        // Lógica final e corrigida para instalação e redirecionamento
+
         const startButton = document.getElementById('start-button');
 
         function updateButtonState() {
+            // Agora verificamos window.deferredPrompt, que é preenchido pelo pwa-installer.js
             if (window.deferredPrompt) {
                 startButton.innerText = 'Instalar e Começar';
             }
@@ -52,14 +75,28 @@
         });
 
         startButton.addEventListener('click', async () => {
+            // Se o app for instalável, primeiro mostra o prompt
             if (window.deferredPrompt) {
                 window.deferredPrompt.prompt();
+                
+                // Aguarda a escolha do usuário antes de continuar
                 const { outcome } = await window.deferredPrompt.userChoice;
+                
                 console.log(`Resultado da instalação: ${outcome}`);
-                window.deferredPrompt = null;
+                
+                window.deferredPrompt = null; // Limpa a referência
             }
+            
+            // Sempre redireciona para o app após a tentativa de instalação (ou se não houver prompt)
             window.location.href = '/app';
         });
+
+        const versesButton = document.getElementById('verses-button');
+        if (versesButton) {
+            versesButton.addEventListener('click', () => {
+                window.location.href = '/versiculos';
+            });
+        }
     </script>
 </body>
 </html>
