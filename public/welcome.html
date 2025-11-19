@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bem-vindo! - Montador de Sermões 3.2</title>
+    <title>Bem-vindo! - Montador de Sermões 3.3</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="/manifest.json">
     
     <script src="pwa-installer.js" defer></script>
 
-  <!-- BLOCO DE CÓDIGO FINAL E CORRIGIDO -->
 <script
   src="https://browser.sentry-cdn.com/7.117.0/bundle.min.js"
   crossorigin="anonymous"
@@ -23,23 +22,26 @@
 </head>
 <body>
     <header>
-        <img src="https://cdn.glitch.global/db74bd9b-d683-421c-9223-f55b917c9dce/logo.png?v=1734385573934" alt="Logo do Montador de Sermões 3.2" class="logo">
+        <img src="https://cdn.glitch.global/db74bd9b-d683-421c-9223-f55b917c9dce/logo.png?v=1734385573934" alt="Logo do Montador de Sermões 3.3" class="logo">
     </header>
     
     <div class="welcome-container">
         <h1>Parabéns!</h1>
-        <p>Seja bem-vindo ao Montador de Sermões 3.2. Para a melhor experiência, recomendamos instalar o atalho do aplicativo em seu dispositivo.</p>
+        <p>Seja bem-vindo ao Montador de Sermões 3.3. Para a melhor experiência, recomendamos instalar o atalho do aplicativo em seu dispositivo.</p>
         
         <button id="start-button" class="start-button">Começar a Usar</button>
+
+        <br><br>
+
+        <a href="/versiculos" class="start-button" style="background:#4CAF50;">
+            Versículos para Ocasiões (Novo)
+        </a>
     </div>
 
     <script>
-        // Lógica final e corrigida para instalação e redirecionamento
-
         const startButton = document.getElementById('start-button');
 
         function updateButtonState() {
-            // Agora verificamos window.deferredPrompt, que é preenchido pelo pwa-installer.js
             if (window.deferredPrompt) {
                 startButton.innerText = 'Instalar e Começar';
             }
@@ -50,19 +52,12 @@
         });
 
         startButton.addEventListener('click', async () => {
-            // Se o app for instalável, primeiro mostra o prompt
             if (window.deferredPrompt) {
                 window.deferredPrompt.prompt();
-                
-                // Aguarda a escolha do usuário antes de continuar
                 const { outcome } = await window.deferredPrompt.userChoice;
-                
                 console.log(`Resultado da instalação: ${outcome}`);
-                
-                window.deferredPrompt = null; // Limpa a referência
+                window.deferredPrompt = null;
             }
-            
-            // Sempre redireciona para o app após a tentativa de instalação (ou se não houver prompt)
             window.location.href = '/app';
         });
     </script>
