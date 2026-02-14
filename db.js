@@ -1,4 +1,4 @@
-// db.js - Versão de Diagnóstico com Logs de Pool
+// db.js - Versão de Diagnóstico com Logs de Pool (Ajustada para Resiliência)
 
 const { Pool } = require('pg');
 
@@ -7,21 +7,19 @@ const isProduction = process.env.NODE_ENV === 'production';
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isProduction ? { rejectUnauthorized: false } : false,
-  // === INÍCIO DAS ALTERAÇÕES SOLICITADAS ===
-  connectionTimeoutMillis: 3000, // Timeout para aquisição de uma nova conexão (3 segundos)
+  // Configurações de Pool ajustadas para evitar quedas por timeouts transitórios
+  connectionTimeoutMillis: 5000, // Aumentado para 5 segundos para maior tolerância
   idleTimeoutMillis: 10000,     // Timeout para encerramento de clientes ociosos (10 segundos)
-  max: 10,                      // Limite explícito para o número máximo de clientes no pool
-  // === FIM DAS ALTERAÇÕES SOLICITADAS ===
+  max: 5,                       // Limite de conexões reduzido para maior estabilidade em planos básicos
 });
 
 // ===================================================================
-// ADIÇÃO DE DIAGNÓSTICO:
-// Este bloco irá "ouvir" por erros que acontecem no pool de conexões
-// em segundo plano, que normalmente não são mostrados nos logs.
+// TRATAMENTO DE ERROS DO POOL:
+// Alterado para não encerrar o processo (process.exit removido)
 // ===================================================================
-pool.on('error', (err, client) => {
-  console.error('[ERRO NO POOL DE CONEXÕES PG] Erro inesperado no cliente inativo', err);
-  process.exit(-1); // Encerra o processo para que o Render o reinicie
+pool.on('error', (err) => {
+  console.error('[ERRO NO POOL DE CONEXÕES PG]', err);
+  // O processo não é mais encerrado aqui.
 });
 // ===================================================================
 
@@ -29,8 +27,9 @@ pool.on('error', (err, client) => {
  * Função auto-executável para inicializar e migrar o banco de dados.
  */
 (async () => {
-  const client = await pool.connect();
+  let client;
   try {
+    client = await pool.connect();
     console.log('Verificando e preparando o banco de dados...');
 
     // --- Tabela 'customers' ---
@@ -100,10 +99,10 @@ pool.on('error', (err, client) => {
     console.log('✅ Banco de dados pronto para uso.');
 
   } catch (err) {
-    console.error('❌ Erro fatal ao inicializar o banco de dados:', err);
-    process.exit(1);
+    console.error('❌ Erro ao inicializar o banco de dados (o servidor tentará continuar):', err);
+    // process.exit removido para permitir que o servidor tente se recuperar
   } finally {
-    client.release();
+    if (client) client.release();
   }
 })();
 
