@@ -30,6 +30,12 @@ const {
     checkIfUserIsSubscribed, deletePushSubscription
 } = require('./db');
 
+// --- VARIÁVEIS GLOBAIS DE CONTROLE DE CONCORRÊNCIA ---
+// Limite de gerações simultâneas na etapa 4
+let activeGenerations = 0;
+const MAX_CONCURRENT_GENERATIONS = 2;
+const generationQueue = []; // Fila de espera (resolvers das Promises)
+
 // --- 3. CONFIGURAÇÃO DO EXPRESS ---
 const app = express();
 const port = process.env.PORT || 3000;
@@ -881,33 +887,66 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                 return res.status(403).json({ error: "Acesso negado.", message: "Sua assinatura expirou.", renewal_url: "https://casadopregador.com/pv/montador3anual" });
             }
 
-            console.log(`[Acesso Concedido] Gerando sermão para ${req.session.user.email}.`);
-            const { topic, audience, sermonType, duration } = req.session.sermonData;
-            const promptConfig = getPromptConfig(sermonType, duration);
-            const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '').trim();
-            const cleanAudience = audience.replace(/^[A-Z]\)\s*/, '').trim();
-            const prompt = `Gere um sermão do tipo ${cleanSermonType} para um público de ${cleanAudience} sobre o tema "${topic}". ${promptConfig.structure}`;
-            
-            console.log(`[OpenAI] Enviando requisição para ${req.session.user.email}. Modelo: ${promptConfig.model}`);
-            const data = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-                body: JSON.stringify({
-                    model: promptConfig.model,
-                    messages: [{ role: "user", content: prompt }],
-                    max_tokens: promptConfig.max_tokens,
-                    temperature: promptConfig.temperature,
-                }),
-            });
+            // --- LÓGICA DE CONTROLE DE CONCORRÊNCIA ---
+            if (activeGenerations >= MAX_CONCURRENT_GENERATIONS) {
+                try {
+                    await new Promise((resolve, reject) => {
+                        const timeoutId = setTimeout(() => {
+                            const index = generationQueue.indexOf(resolve);
+                            if (index > -1) generationQueue.splice(index, 1);
+                            reject(new Error("Queue timeout"));
+                        }, 20000); // 20 segundos de espera
 
-            console.log(`[OpenAI] Resposta recebida para ${req.session.user.email}.`);
-            await logSermonActivity({
-                user_email: req.session.user.email, sermon_topic: topic, sermon_audience: audience,
-                sermon_type: sermonType, sermon_duration: duration, model_used: promptConfig.model, prompt_instruction: promptConfig.structure
-            });
+                        generationQueue.push((val) => {
+                            clearTimeout(timeoutId);
+                            resolve(val);
+                        });
+                    });
+                } catch (err) {
+                    return res.status(503).json({ 
+                        error: "Service Busy", 
+                        message: "Estamos organizando os próximos passos da sua mensagem. Em instantes iniciaremos a preparação do seu sermão." 
+                    });
+                }
+            }
 
-            delete req.session.sermonData;
-            res.json({ sermon: data.choices[0].message.content });
+            activeGenerations++;
+
+            try {
+                console.log(`[Acesso Concedido] Gerando sermão para ${req.session.user.email}.`);
+                const { topic, audience, sermonType, duration } = req.session.sermonData;
+                const promptConfig = getPromptConfig(sermonType, duration);
+                const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '').trim();
+                const cleanAudience = audience.replace(/^[A-Z]\)\s*/, '').trim();
+                const prompt = `Gere um sermão do tipo ${cleanSermonType} para um público de ${cleanAudience} sobre o tema "${topic}". ${promptConfig.structure}`;
+                
+                console.log(`[OpenAI] Enviando requisição para ${req.session.user.email}. Modelo: ${promptConfig.model}`);
+                const data = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+                    body: JSON.stringify({
+                        model: promptConfig.model,
+                        messages: [{ role: "user", content: prompt }],
+                        max_tokens: promptConfig.max_tokens,
+                        temperature: promptConfig.temperature,
+                    }),
+                });
+
+                console.log(`[OpenAI] Resposta recebida para ${req.session.user.email}.`);
+                await logSermonActivity({
+                    user_email: req.session.user.email, sermon_topic: topic, sermon_audience: audience,
+                    sermon_type: sermonType, sermon_duration: duration, model_used: promptConfig.model, prompt_instruction: promptConfig.structure
+                });
+
+                delete req.session.sermonData;
+                res.json({ sermon: data.choices[0].message.content });
+            } finally {
+                activeGenerations--;
+                if (generationQueue.length > 0) {
+                    const nextResolver = generationQueue.shift();
+                    nextResolver(); // Libera a próxima requisição na fila
+                }
+            }
         }
     } catch (error) {
         Sentry.captureException(error);
