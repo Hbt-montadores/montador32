@@ -1,3 +1,5 @@
+--- START OF FILE server (17).js ---
+
 // --- 1. CONFIGURAÇÃO INICIAL E SENTRY ---
 // Sentry DEVE ser o primeiro módulo importado para funcionar corretamente.
 require("dotenv").config();
@@ -35,6 +37,35 @@ const {
 let activeGenerations = 0;
 const MAX_CONCURRENT_GENERATIONS = 2;
 const generationQueue = []; // Fila de espera (resolvers das Promises)
+
+// Função auxiliar para aguardar vaga na fila
+const waitForSlot = () => {
+    // Se há vagas disponíveis, retorna imediatamente
+    if (activeGenerations < MAX_CONCURRENT_GENERATIONS) {
+        return Promise.resolve();
+    }
+
+    // Se não há vagas, cria uma promessa e coloca na fila
+    return new Promise((resolve, reject) => {
+        // Configura o timeout de 20 segundos
+        const timeoutId = setTimeout(() => {
+            // Remove da fila se estourar o tempo
+            const index = generationQueue.indexOf(resolveWrapper);
+            if (index > -1) {
+                generationQueue.splice(index, 1);
+            }
+            reject(new Error("Timeout waiting for slot"));
+        }, 20000);
+
+        // Wrapper para limpar o timeout quando resolvido
+        const resolveWrapper = (val) => {
+            clearTimeout(timeoutId);
+            resolve(val);
+        };
+
+        generationQueue.push(resolveWrapper);
+    });
+};
 
 // --- 3. CONFIGURAÇÃO DO EXPRESS ---
 const app = express();
@@ -888,28 +919,18 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
             }
 
             // --- LÓGICA DE CONTROLE DE CONCORRÊNCIA ---
-            if (activeGenerations >= MAX_CONCURRENT_GENERATIONS) {
-                try {
-                    await new Promise((resolve, reject) => {
-                        const timeoutId = setTimeout(() => {
-                            const index = generationQueue.indexOf(resolve);
-                            if (index > -1) generationQueue.splice(index, 1);
-                            reject(new Error("Queue timeout"));
-                        }, 20000); // 20 segundos de espera
-
-                        generationQueue.push((val) => {
-                            clearTimeout(timeoutId);
-                            resolve(val);
-                        });
-                    });
-                } catch (err) {
-                    return res.status(503).json({ 
-                        error: "Service Busy", 
-                        message: "Estamos organizando os próximos passos da sua mensagem. Em instantes iniciaremos a preparação do seu sermão." 
-                    });
-                }
+            // Tenta obter uma vaga (slot)
+            try {
+                await waitForSlot();
+            } catch (err) {
+                // Se exceder o tempo limite (20s) na fila
+                return res.status(503).json({ 
+                    error: "Service Busy", 
+                    message: "Estamos organizando os próximos passos da sua mensagem. Em instantes iniciaremos a preparação do seu sermão." 
+                });
             }
 
+            // Se obteve vaga, incrementa o contador e prossegue
             activeGenerations++;
 
             try {
@@ -941,10 +962,12 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                 delete req.session.sermonData;
                 res.json({ sermon: data.choices[0].message.content });
             } finally {
+                // Sempre decrementa o contador, mesmo em caso de erro na OpenAI
                 activeGenerations--;
+                // Se houver alguém na fila, libera o próximo
                 if (generationQueue.length > 0) {
                     const nextResolver = generationQueue.shift();
-                    nextResolver(); // Libera a próxima requisição na fila
+                    nextResolver(); 
                 }
             }
         }
