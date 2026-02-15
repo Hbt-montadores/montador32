@@ -1,5 +1,3 @@
---- START OF FILE server (17).js ---
-
 // --- 1. CONFIGURAÇÃO INICIAL E SENTRY ---
 // Sentry DEVE ser o primeiro módulo importado para funcionar corretamente.
 require("dotenv").config();
