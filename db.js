@@ -1,4 +1,4 @@
-// db.js - Versão de Diagnóstico com Logs de Pool e Regras de Cooldown
+// db.js - Versão de Diagnóstico e Produção com Schema Canônico
 
 const { Pool } = require('pg');
 
@@ -19,16 +19,15 @@ const pool = new Pool({
 pool.on('error', (err) => {
   console.error('[ERRO NO POOL DE CONEXÕES PG]', err);
 });
-// ===================================================================
 
 /**
- * Função auto-executável para inicializar e migrar o banco de dados.
+ * Inicialização e migração do banco de dados com Schema Canônico.
  */
 (async () => {
   let client;
   try {
     client = await pool.connect();
-    console.log('Verificando e preparando o banco de dados...');
+    console.log('Verificando e preparando o banco de dados (Schema Canônico)...');
 
     // --- Tabela 'customers' ---
     await client.query(`
@@ -43,48 +42,49 @@ pool.on('error', (err) => {
         grace_period_month TEXT,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         last_invoice_id TEXT,
-        last_product_id TEXT
+        last_product_id TEXT,
+        last_generated_at TIMESTAMP WITH TIME ZONE
       );
     `);
 
     await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_invoice_id TEXT;`);
     await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_product_id TEXT;`);
-    
-    // Novo campo para controle de última geração geral (Cooldown)
     await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_generated_at TIMESTAMP WITH TIME ZONE;`);
     
-    console.log('✔️ Tabela "customers" pronta e migrada.');
+    console.log('✔️ Tabela "customers" pronta.');
 
-    // --- Nova Tabela 'sermons' ---
+    // --- Tabela 'sermons' (Padronizada) ---
     await client.query(`
       CREATE TABLE IF NOT EXISTS sermons (
         id SERIAL PRIMARY KEY,
         user_email TEXT NOT NULL,
-        topic TEXT, -- Mantido por compatibilidade retroativa temporária
-        theme_original TEXT,
-        theme_normalized TEXT,
+        topic TEXT NOT NULL,
+        topic_normalized TEXT NOT NULL,
         audience TEXT NOT NULL,
         sermon_type TEXT NOT NULL,
         duration TEXT NOT NULL,
         content TEXT NOT NULL,
-        saved BOOLEAN DEFAULT false,
+        saved BOOLEAN NOT NULL DEFAULT false,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
     `);
     
-    // --- MIGRAÇÃO: Garantindo que todas as colunas existam caso a tabela já tenha sido criada ---
-    await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS theme_original TEXT;`);
-    await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS theme_normalized TEXT;`);
-    await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS audience TEXT;`);
-    await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS sermon_type TEXT;`);
-    await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS duration TEXT;`);
+    // Migrações para garantir que colunas antigas ou faltando sejam ajustadas
+    await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS topic_normalized TEXT;`);
+    await client.query(`ALTER TABLE sermons ALTER COLUMN topic SET NOT NULL;`);
+    await client.query(`ALTER TABLE sermons ALTER COLUMN topic_normalized SET NOT NULL;`);
     await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS saved BOOLEAN DEFAULT false;`);
 
-    // --- Índice composto otimizado para a tabela 'sermons' ---
+    // Índices otimizados para Cache e Histórico
     await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_sermons_normalized_composite 
-      ON sermons (theme_normalized, audience, sermon_type, duration);
+      CREATE INDEX IF NOT EXISTS idx_sermons_cache_composite 
+      ON sermons (topic_normalized, audience, sermon_type, duration);
     `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_sermons_user_history
+      ON sermons (user_email, created_at DESC);
+    `);
+    
     console.log('✔️ Tabela "sermons" pronta e migrada.');
 
     // --- Tabela 'access_control' ---
@@ -132,7 +132,7 @@ pool.on('error', (err) => {
     console.log('✅ Banco de dados pronto para uso.');
 
   } catch (err) {
-    console.error('❌ Erro ao inicializar o banco de dados (o servidor tentará continuar):', err);
+    console.error('❌ Erro ao inicializar o banco de dados:', err);
   } finally {
     if (client) client.release();
   }
@@ -237,31 +237,31 @@ async function logSermonActivity(details) {
     );
 }
 
-// --- FUNÇÕES DE CONTROLE DE SERMÕES, CACHE E COOLDOWN ---
+// --- FUNÇÕES DE CONTROLE DE SERMÕES, CACHE E COOLDOWN (NOMES CANÔNICOS) ---
 
-async function getIdenticalSermon(email, theme_normalized, audience, type, duration) {
+async function getIdenticalSermon(email, topic_normalized, audience, type, duration) {
     const query = `
         SELECT id, content, saved FROM sermons
-        WHERE user_email = $1 AND theme_normalized = $2 AND audience = $3 AND sermon_type = $4 AND duration = $5
+        WHERE user_email = $1 AND topic_normalized = $2 AND audience = $3 AND sermon_type = $4 AND duration = $5
         ORDER BY created_at DESC LIMIT 1
     `;
-    const { rows } = await pool.query(query, [email.toLowerCase(), theme_normalized, audience, type, duration]);
+    const { rows } = await pool.query(query, [email.toLowerCase(), topic_normalized, audience, type, duration]);
     return rows[0] || null;
 }
 
-async function checkMonthlyCooldown(email, duration, theme_normalized) {
+async function checkMonthlyCooldown(email, duration, topic_normalized) {
     const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000);
     const longSermons = ["Entre 40 e 50 min", "Entre 50 e 60 min", "Acima de 1 hora"];
     const isCurrentLong = longSermons.includes(duration);
 
     const query = `
-        SELECT theme_normalized, duration FROM sermons 
+        SELECT topic_normalized, duration FROM sermons 
         WHERE user_email = $1 AND created_at >= $2
     `;
     const { rows } = await pool.query(query, [email.toLowerCase(), fifteenMinsAgo.toISOString()]);
 
     for (let row of rows) {
-        if (row.theme_normalized === theme_normalized) {
+        if (row.topic_normalized === topic_normalized) {
             return { blocked: true, reason: "Você já preparou uma mensagem com um tema muito parecido nos últimos 15 minutos. Por favor, aguarde para gerar novamente." };
         }
         if (isCurrentLong && longSermons.includes(row.duration)) {
@@ -271,16 +271,16 @@ async function checkMonthlyCooldown(email, duration, theme_normalized) {
     return { blocked: false };
 }
 
-async function saveGeneratedSermon(email, theme_original, theme_normalized, audience, type, duration, content) {
+async function saveGeneratedSermon(email, topic, topic_normalized, audience, type, duration, content) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
         
         const insertQuery = `
-            INSERT INTO sermons (user_email, theme_original, theme_normalized, audience, sermon_type, duration, content)
+            INSERT INTO sermons (user_email, topic, topic_normalized, audience, sermon_type, duration, content)
             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
         `;
-        const res = await client.query(insertQuery, [email.toLowerCase(), theme_original, theme_normalized, audience, type, duration, content]);
+        const res = await client.query(insertQuery, [email.toLowerCase(), topic, topic_normalized, audience, type, duration, content]);
         const newSermonId = res.rows[0].id;
 
         const updateCustomerQuery = `
@@ -310,7 +310,7 @@ async function markSermonAsSaved(email, id, savedStatus) {
 
 async function getUserRecentSermons(email, limit = 20) {
     const query = `
-        SELECT id, COALESCE(theme_original, topic) as topic, audience, sermon_type as type, duration, content, created_at, saved
+        SELECT id, topic, audience, sermon_type as type, duration, content, created_at, saved
         FROM sermons
         WHERE user_email = $1
         ORDER BY created_at DESC
