@@ -149,9 +149,9 @@ function handleFetchError(error, responseStatus) {
     } else {
         // Erro Genérico de Servidor
         errorHTML = `
-            <h2>Ocorreu um Erro Inesperado</h2>
-            <p>Não foi possível continuar. Por favor, verifique sua conexão ou tente novamente.</p>
-            <button onclick="startNewSermon()">Tentar Novamente</button>`;
+            <h2>Não foi possível continuar</h2>
+            <p>Não foi possível continuar. Por favor, verifique sua conexão e tente novamente mais tarde.</p>
+            <button onclick="startNewSermon()">Tentar novamente</button>`;
     }
 
     elements.errorContainer.innerHTML = errorHTML;
