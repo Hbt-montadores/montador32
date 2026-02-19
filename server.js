@@ -28,8 +28,9 @@ const {
     logSermonActivity, updateGraceSermons, registerProspect,
     savePushSubscription, getAllPushSubscriptions,
     checkIfUserIsSubscribed, deletePushSubscription,
-    // Novas importações para o sistema de histórico:
-    getIdenticalSermon, saveGeneratedSermon, getUserRecentSermons, getPlatformRecentSermons
+    // Funções de histórico e controle de sermões:
+    getIdenticalSermon, saveGeneratedSermon, getUserRecentSermons,
+    markSermonAsSaved, checkMonthlyCooldown
 } = require('./db');
 
 // --- VARIÁVEIS GLOBAIS DE CONTROLE DE CONCORRÊNCIA ---
@@ -40,16 +41,12 @@ const generationQueue = []; // Fila de espera (resolvers das Promises)
 
 // Função auxiliar para aguardar vaga na fila
 const waitForSlot = () => {
-    // Se há vagas disponíveis, retorna imediatamente
     if (activeGenerations < MAX_CONCURRENT_GENERATIONS) {
         return Promise.resolve();
     }
 
-    // Se não há vagas, cria uma promessa e coloca na fila
     return new Promise((resolve, reject) => {
-        // Configura o timeout de 20 segundos
         const timeoutId = setTimeout(() => {
-            // Remove da fila se estourar o tempo
             const index = generationQueue.indexOf(resolveWrapper);
             if (index > -1) {
                 generationQueue.splice(index, 1);
@@ -57,7 +54,6 @@ const waitForSlot = () => {
             reject(new Error("Timeout waiting for slot"));
         }, 20000);
 
-        // Wrapper para limpar o timeout quando resolvido
         const resolveWrapper = (val) => {
             clearTimeout(timeoutId);
             resolve(val);
@@ -67,11 +63,16 @@ const waitForSlot = () => {
     });
 };
 
+// --- FUNÇÃO AUXILIAR DE NORMALIZAÇÃO ---
+function normalizeTheme(theme) {
+    if (!theme) return '';
+    return theme.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
 // --- 3. CONFIGURAÇÃO DO EXPRESS ---
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Os Handlers do Sentry DEVEM ser os primeiros middlewares do app.
 app.use(Sentry.Handlers.requestHandler());
 app.use(Sentry.Handlers.tracingHandler());
 
@@ -822,14 +823,29 @@ app.get("/api/my-sermons", requireLogin, async (req, res) => {
     }
 });
 
-app.get("/api/recent-sermons", requireLogin, async (req, res) => {
+app.post("/api/sermon/save", requireLogin, async (req, res) => {
     try {
-        const sermons = await getPlatformRecentSermons(20);
-        res.json({ sermons });
+        const { id } = req.body;
+        if (!id) return res.status(400).json({ error: "ID do sermão não fornecido." });
+        
+        await markSermonAsSaved(req.session.user.email, id, true);
+        res.json({ success: true });
     } catch (error) {
         Sentry.captureException(error);
-        console.error("[BACKEND ERROR] Erro ao buscar sermões recentes:", error);
-        res.status(500).json({ error: "Erro ao buscar sermões recentes da plataforma." });
+        console.error("[BACKEND ERROR] Erro ao salvar sermão manualmente:", error);
+        res.status(500).json({ error: "Erro interno ao salvar o sermão." });
+    }
+});
+
+app.delete("/api/sermon/:id", requireLogin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        await markSermonAsSaved(req.session.user.email, id, false);
+        res.json({ success: true });
+    } catch (error) {
+        Sentry.captureException(error);
+        console.error("[BACKEND ERROR] Erro ao remover sermão da lista de salvos:", error);
+        res.status(500).json({ error: "Erro interno ao remover o sermão." });
     }
 });
 
@@ -945,39 +961,50 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
             }
 
             const { topic, audience, sermonType, duration } = req.session.sermonData;
+            const theme_normalized = normalizeTheme(topic);
 
-            // --- VERIFICAÇÃO DE SERMÃO IDÊNTICO (CACHE) ---
-            const identicalSermon = await getIdenticalSermon(req.session.user.email, topic, audience, sermonType, duration);
+            // --- b) VERIFICAÇÃO DE SERMÃO IDÊNTICO (CACHE OBRIGATÓRIO) ---
+            const identicalSermon = await getIdenticalSermon(req.session.user.email, theme_normalized, audience, sermonType, duration);
             if (identicalSermon) {
-                console.log(`[Cache Hit] Retornando sermão já gerado anteriormente para ${req.session.user.email}.`);
+                console.log(`[Cache Hit] Retornando sermão idêntico salvo para ${req.session.user.email}.`);
                 delete req.session.sermonData;
-                return res.json({ sermon: identicalSermon.content });
+                return res.json({ 
+                    sermon: identicalSermon.content, 
+                    id: identicalSermon.id, 
+                    saved: identicalSermon.saved,
+                    is_cache: true 
+                });
             }
 
-            // --- LÓGICA DE CONTROLE DE CONCORRÊNCIA ---
-            // Tenta obter uma vaga (slot) para chamar a OpenAI
+            // --- c) VERIFICAÇÃO DE COOLDOWN MENSAL ---
+            if (req.session.user.status === 'monthly_paid') {
+                const cooldown = await checkMonthlyCooldown(req.session.user.email, duration, theme_normalized);
+                if (cooldown.blocked) {
+                    console.log(`[Cooldown Bloqueio] Usuário ${req.session.user.email}: ${cooldown.reason}`);
+                    return res.status(429).json({ error: "Acesso temporariamente limitado.", message: cooldown.reason });
+                }
+            }
+
+            // --- d) SE LIBERADO: CHAMAR OPENAI ---
             try {
                 await waitForSlot();
             } catch (err) {
-                // Se exceder o tempo limite (20s) na fila
                 return res.status(503).json({ 
                     error: "Service Busy", 
                     message: "Estamos organizando os próximos passos da sua mensagem. Em instantes iniciaremos a preparação do seu sermão." 
                 });
             }
 
-            // Se obteve vaga, incrementa o contador e prossegue
             activeGenerations++;
 
             try {
-                console.log(`[Acesso Concedido] Gerando sermão para ${req.session.user.email}.`);
+                console.log(`[OpenAI Autorizado] Gerando sermão para ${req.session.user.email}.`);
                 
                 const promptConfig = getPromptConfig(sermonType, duration);
                 const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '').trim();
                 const cleanAudience = audience.replace(/^[A-Z]\)\s*/, '').trim();
                 const prompt = `Gere um sermão do tipo ${cleanSermonType} para um público de ${cleanAudience} sobre o tema "${topic}". ${promptConfig.structure}`;
                 
-                console.log(`[OpenAI] Enviando requisição para ${req.session.user.email}. Modelo: ${promptConfig.model}`);
                 const data = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
                     method: "POST",
                     headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
@@ -990,10 +1017,18 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                 });
 
                 const generatedContent = data.choices[0].message.content;
-                console.log(`[OpenAI] Resposta recebida para ${req.session.user.email}.`);
+                console.log(`[OpenAI Sucesso] Resposta recebida para ${req.session.user.email}.`);
                 
-                // SALVA O SERMÃO NO BANCO E ATUALIZA CUSTOMERS
-                await saveGeneratedSermon(req.session.user.email, topic, audience, sermonType, duration, generatedContent);
+                // SALVA NO BANCO LOGO APÓS A RESPOSTA (Não mantém conexão aberta durante chamada de IA)
+                const savedSermonId = await saveGeneratedSermon(
+                    req.session.user.email, 
+                    topic, 
+                    theme_normalized, 
+                    audience, 
+                    sermonType, 
+                    duration, 
+                    generatedContent
+                );
 
                 await logSermonActivity({
                     user_email: req.session.user.email, sermon_topic: topic, sermon_audience: audience,
@@ -1001,11 +1036,11 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                 });
 
                 delete req.session.sermonData;
-                res.json({ sermon: generatedContent });
+                
+                // Retorna id e saved=false nativamente
+                res.json({ sermon: generatedContent, id: savedSermonId, saved: false, is_cache: false });
             } finally {
-                // Sempre decrementa o contador no final, liberando o slot
                 activeGenerations--;
-                // Se houver alguém na fila de espera, libera o próximo
                 if (generationQueue.length > 0) {
                     const nextResolver = generationQueue.shift();
                     nextResolver(); 
@@ -1019,10 +1054,8 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
     }
 });
 
-// --- ÚLTIMO MIDDLEWARE: ERROR HANDLER DO SENTRY ---
 app.use(Sentry.Handlers.errorHandler());
 
-// --- INICIALIZAÇÃO DO SERVIDOR ---
 app.listen(port, () => {
     console.log(`🚀 Servidor rodando com sucesso na porta ${port}`);
 });
