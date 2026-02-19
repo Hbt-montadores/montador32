@@ -52,6 +52,13 @@ pool.on('error', (err) => {
     await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_invoice_id TEXT;`);
     await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_product_id TEXT;`);
     
+    // Novas colunas adicionadas para rastreamento do último sermão
+    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_sermon_topic TEXT;`);
+    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_sermon_audience TEXT;`);
+    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_sermon_type TEXT;`);
+    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_sermon_duration TEXT;`);
+    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_sermon_generated_at TIMESTAMP WITH TIME ZONE;`);
+    
     console.log('✔️ Tabela "customers" pronta e migrada.');
 
     // --- Tabela 'access_control' ---
