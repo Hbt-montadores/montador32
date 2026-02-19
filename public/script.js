@@ -1,4 +1,4 @@
-// public/script.js - Versão Final com Correção de Sintaxe no PDF e Histórico de Sermões
+// public/script.js - Versão Final (Cooldown, Overlay e Histórico Completo)
 
 // ===================================================================
 // SEÇÃO 1: LOGGING DE ERROS DO CLIENTE E SERVICE WORKER
@@ -29,14 +29,13 @@ window.onerror = function(message, source, lineno, colno, error) {
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js')
-      .then(reg => console.log('Service Worker registrado com sucesso no app.html.'))
+      .then(reg => console.log('Service Worker registrado com sucesso.'))
       .catch(err => logErrorToServer('error', `Falha ao registrar Service Worker: ${err.message}`));
   });
 }
 
-
 // ===================================================================
-// SEÇÃO 2: LÓGICA PRINCIPAL DA APLICAÇÃO
+// SEÇÃO 2: LÓGICA PRINCIPAL DA APLICAÇÃO E LOADING ROTATIVO
 // ===================================================================
 
 let currentStep = 1;
@@ -44,7 +43,7 @@ let elements = {};
 let loadingInterval;
 let sermonData = {};
 
-const longSermonMessages = [
+const loadingPhrases = [
     "Consultando as referências e o contexto bíblico...",
     "Estruturando a espinha dorsal da sua mensagem...",
     "Definindo os pontos principais e a sequência lógica...",
@@ -64,25 +63,21 @@ window.addEventListener('load', () => {
         inputArea: document.getElementById('input-area'),
         userInput: document.getElementById('user-input'),
         options: document.getElementById('options'),
-        loading: document.getElementById('loading'),
-        loadingText: document.getElementById('loading-text'),
+        
+        loadingOverlay: document.getElementById('loading-overlay'),
+        loadingPhrase: document.getElementById('loading-phrase'),
+        
         sermonResult: document.getElementById('sermon-result'),
         errorContainer: document.getElementById('error-container'),
         
-        // Novos elementos para o histórico
         mySermonsBtn: document.getElementById('my-sermons-button'),
-        recentSermonsBtn: document.getElementById('recent-sermons-button'),
         sermonsListContainer: document.getElementById('sermons-list-container'),
         sermonsListTitle: document.getElementById('sermons-list-title'),
         sermonsListContent: document.getElementById('sermons-list-content')
     };
 
-    // Listeners dos novos botões
     if (elements.mySermonsBtn) {
         elements.mySermonsBtn.addEventListener('click', fetchMySermons);
-    }
-    if (elements.recentSermonsBtn) {
-        elements.recentSermonsBtn.addEventListener('click', fetchRecentSermons);
     }
 
     startNewSermon();
@@ -102,35 +97,60 @@ function startNewSermon() {
   elements.inputArea.style.display = 'block';
   elements.options.style.display = 'none';
   elements.sermonResult.style.display = 'none';
-  elements.loading.style.display = 'none';
   elements.errorContainer.style.display = 'none';
+  
+  hideLoading();
   
   if (elements.sermonsListContainer) {
       elements.sermonsListContainer.style.display = 'none';
   }
-
-  if (elements.loadingText) elements.loadingText.textContent = "Gerando sermão, por favor aguarde...";
-  clearInterval(loadingInterval);
 }
 
-function handleFetchError(error) {
-    const errorMessage = `Erro na comunicação com o servidor: ${JSON.stringify(error)}`;
-    logErrorToServer('error', errorMessage);
+function showLoading() {
+    elements.loadingOverlay.style.display = 'flex';
+    let phraseIndex = 0;
+    
+    // Mostra a primeira frase imediatamente
+    elements.loadingPhrase.textContent = loadingPhrases[phraseIndex];
+    
+    // Troca a frase a cada 5 segundos
+    loadingInterval = setInterval(() => {
+        phraseIndex = (phraseIndex + 1) % loadingPhrases.length;
+        elements.loadingPhrase.textContent = loadingPhrases[phraseIndex];
+    }, 5000);
+}
 
-    elements.loading.style.display = 'none';
+function hideLoading() {
+    clearInterval(loadingInterval);
+    if (elements.loadingOverlay) {
+        elements.loadingOverlay.style.display = 'none';
+    }
+}
+
+function handleFetchError(error, responseStatus) {
+    hideLoading();
     elements.stepContainer.style.display = 'none';
     
     let errorHTML;
-    if (error && error.renewal_url) {
+
+    if (responseStatus === 429) {
+        // Bloqueio de Cooldown (Exibe com layout amigável)
         errorHTML = `
             <h2>Atenção!</h2>
+            <p style="font-size: 1.2em; color: #D32F2F; margin-bottom: 20px;">${error.message || 'Limite de acesso atingido.'}</p>
+            <button onclick="startNewSermon()" style="background-color: #1565C0; color: white; padding: 15px 30px; border-radius: 8px; font-size: 1.2em; border: none; cursor: pointer; width: 100%; max-width: 300px; margin-top: 10px;">Entendido, vou aguardar</button>`;
+    } else if (error && error.renewal_url) {
+        // Assinatura Vencida / Limite de Cortesia
+        errorHTML = `
+            <h2>Acesso Expirado</h2>
             <p style="font-size: 1.2em; color: #D32F2F; margin-bottom: 20px;">${error.message}</p>
-            <a href="${error.renewal_url}" target="_blank" class="action-button" style="background-color: #4CAF50; color: white; padding: 15px 30px; text-decoration: none; font-size: 1.5em; border-radius: 8px; display: inline-block; margin-top: 10px;">LIBERAR ACESSO</a>
-            <br><br><button onclick="startNewSermon()" style="margin-top: 20px;">Voltar ao Início</button>`;
+            <a href="${error.renewal_url}" target="_blank" style="background-color: #4CAF50; color: white; padding: 15px 30px; text-decoration: none; font-size: 1.5em; border-radius: 8px; display: inline-block; margin-top: 10px;">LIBERAR ACESSO</a>
+            <br><br><button onclick="startNewSermon()" style="margin-top: 20px; border: none; background: transparent; color: #1565C0; text-decoration: underline; cursor: pointer;">Voltar ao Início</button>`;
     } else {
+        // Erro Genérico de Servidor
         errorHTML = `
             <h2>Ocorreu um Erro Inesperado</h2>
-            <p>Não foi possível continuar. Por favor, verifique sua conexão ou tente novamente mais tarde.</p>
+            <p>Não foi possível continuar. Por favor, verifique sua conexão ou tente novamente.</p>
             <button onclick="startNewSermon()">Tentar Novamente</button>`;
     }
 
@@ -161,7 +181,7 @@ function nextStep(response) {
   }
   
   elements.stepContainer.style.display = 'none';
-  elements.loading.style.display = 'block';
+  showLoading(); // Aqui ainda é só mudança de passo interno, mas mantemos visual limpo
 
   fetch('/api/next-step', {
     method: 'POST',
@@ -169,8 +189,8 @@ function nextStep(response) {
     body: JSON.stringify({ step: currentStep, userResponse: userResponse })
   })
   .then(res => {
-    elements.loading.style.display = 'none';
-    if (!res.ok) { return res.json().then(err => { throw err; }); }
+    hideLoading();
+    if (!res.ok) { return res.json().then(err => { throw { err, status: res.status }; }); }
     return res.json();
   })
   .then(data => {
@@ -179,7 +199,9 @@ function nextStep(response) {
       displayQuestion(data);
     } else { throw new Error('Resposta inválida do servidor.'); }
   })
-  .catch(handleFetchError);
+  .catch(errorObj => {
+      handleFetchError(errorObj.err || errorObj, errorObj.status);
+  });
 }
 
 function displayQuestion(data) {
@@ -200,23 +222,7 @@ function displayQuestion(data) {
 
 function generateSermon(userResponse) {
   elements.stepContainer.style.display = 'none';
-  elements.loading.style.display = 'block';
-
-  const longSermonTriggers = ["Entre 40 e 50 min", "Entre 50 e 60 min", "Acima de 1 hora"];
-  if (longSermonTriggers.includes(userResponse)) {
-    elements.loadingText.textContent = "Você escolheu um sermão mais longo. A preparação pode levar um pouco mais de tempo...";
-    
-    let messageIndex = 0;
-    setTimeout(() => {
-        elements.loadingText.textContent = longSermonMessages[messageIndex];
-        loadingInterval = setInterval(() => {
-            messageIndex = (messageIndex + 1) % longSermonMessages.length;
-            elements.loadingText.textContent = longSermonMessages[messageIndex];
-        }, 7000); 
-    }, 4000);
-  } else {
-    elements.loadingText.textContent = "Gerando seu sermão, por favor aguarde...";
-  }
+  showLoading();
 
   fetch('/api/next-step', {
     method: 'POST',
@@ -224,26 +230,204 @@ function generateSermon(userResponse) {
     body: JSON.stringify({ step: 4, userResponse: userResponse })
   })
   .then(res => {
-      clearInterval(loadingInterval);
-      elements.loading.style.display = 'none';
-      if (!res.ok) { return res.json().then(err => { throw err; }); }
+      if (!res.ok) { return res.json().then(err => { throw { err, status: res.status }; }); }
       return res.json();
   })
   .then(data => {
+      hideLoading();
       if (data.sermon) {
-          const formattedSermon = data.sermon.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
-          elements.sermonResult.innerHTML = `
-              <h2>Seu Sermão está Pronto!</h2>
-              <div class="sermon-content">${formattedSermon}</div>
-              <div class="sermon-actions">
-                <button onclick="saveAsPdf()">Salvar</button>
-                <button onclick="startNewSermon()">Novo</button>
-              </div>`;
-          elements.sermonResult.style.display = 'block';
-      } else { throw new Error('Resposta final inválida do servidor.'); }
+          displayGeneratedSermon(data);
+      } else { 
+          throw new Error('Resposta final inválida do servidor.'); 
+      }
   })
-  .catch(handleFetchError);
+  .catch(errorObj => {
+      hideLoading();
+      handleFetchError(errorObj.err || errorObj, errorObj.status);
+  });
 }
+
+// ===================================================================
+// SEÇÃO 3: RENDERIZAÇÃO E HISTÓRICO DE SERMÕES
+// ===================================================================
+
+function hideMainContainers() {
+    elements.stepContainer.style.display = 'none';
+    elements.sermonResult.style.display = 'none';
+    elements.errorContainer.style.display = 'none';
+}
+
+function fetchMySermons() {
+    hideMainContainers();
+    elements.sermonsListContainer.style.display = 'none';
+    showLoading();
+
+    fetch('/api/my-sermons')
+        .then(res => {
+            if (!res.ok) throw new Error('Erro ao buscar meus sermões');
+            return res.json();
+        })
+        .then(data => {
+            hideLoading();
+            renderSermonList(data.sermons || []);
+        })
+        .catch(err => {
+            hideLoading();
+            console.error(err);
+            alert("Não foi possível carregar o histórico de sermões. Tente novamente.");
+            startNewSermon();
+        });
+}
+
+function toggleSaveSermon(id, currentlySaved, buttonElement) {
+    if (!id) return;
+    
+    const endpoint = currentlySaved ? `/api/sermon/${id}` : '/api/sermon/save';
+    const method = currentlySaved ? 'DELETE' : 'POST';
+
+    // UI Otimista: muda antes do servidor responder
+    buttonElement.disabled = true;
+    buttonElement.innerText = "Atualizando...";
+
+    fetch(endpoint, {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: id })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            // Se foi sucesso, atualiza a lista inteira para refletir a mudança
+            fetchMySermons();
+        } else {
+            alert("Erro ao atualizar o status do sermão.");
+            buttonElement.disabled = false;
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert("Erro de conexão ao salvar/remover sermão.");
+        buttonElement.disabled = false;
+    });
+}
+
+function renderSermonList(sermons) {
+    elements.sermonsListContent.innerHTML = '';
+
+    if (sermons.length === 0) {
+        elements.sermonsListContent.innerHTML = '<p>Você ainda não preparou nenhum sermão.</p>';
+    } else {
+        sermons.forEach(sermon => {
+            const dateStr = sermon.created_at ? new Date(sermon.created_at).toLocaleDateString('pt-BR') : 'Data desconhecida';
+            const cleanType = sermon.type.replace(/^[A-Z]\)\s*/, '').trim();
+            const cleanDuration = sermon.duration;
+
+            const item = document.createElement('div');
+            item.className = 'sermon-list-item';
+            
+            let badgeHTML = sermon.saved ? `<span class="saved-badge">★ Salvo</span>` : '';
+            
+            // Botão de Salvar/Remover
+            const btnColor = sermon.saved ? '#D32F2F' : '#4CAF50';
+            const btnText = sermon.saved ? '❌ Remover' : '⭐ Salvar';
+
+            item.innerHTML = `
+                ${badgeHTML}
+                <h4>${sermon.topic}</h4>
+                <p><strong>Público:</strong> ${sermon.audience} | <strong>Tipo:</strong> ${cleanType}</p>
+                <p><strong>Duração:</strong> ${cleanDuration} | <strong>Data:</strong> ${dateStr}</p>
+                <div style="margin-top: 10px; display: flex; gap: 10px;">
+                    <button class="action-btn-view" style="flex: 1; padding: 8px; border: none; border-radius: 5px; background-color: #1565C0; color: white; cursor: pointer; font-weight: bold;">📖 Ler Sermão</button>
+                    <button class="action-btn-save" style="flex: 1; padding: 8px; border: none; border-radius: 5px; background-color: ${btnColor}; color: white; cursor: pointer; font-weight: bold;">${btnText}</button>
+                </div>
+            `;
+            
+            // Lógica dos botões na lista
+            const btnView = item.querySelector('.action-btn-view');
+            const btnSave = item.querySelector('.action-btn-save');
+
+            btnView.onclick = (e) => {
+                e.stopPropagation();
+                displayGeneratedSermon(sermon);
+            };
+
+            btnSave.onclick = (e) => {
+                e.stopPropagation();
+                toggleSaveSermon(sermon.id, sermon.saved, btnSave);
+            };
+
+            elements.sermonsListContent.appendChild(item);
+        });
+    }
+
+    elements.sermonsListContainer.style.display = 'block';
+}
+
+function displayGeneratedSermon(data) {
+    elements.sermonsListContainer.style.display = 'none';
+    
+    // Atualiza a variável global para exportação PDF
+    sermonData.topic = data.topic || sermonData.topic || 'Sermão';
+    
+    const isSaved = data.saved || false;
+    const btnColor = isSaved ? '#D32F2F' : '#4CAF50';
+    const btnText = isSaved ? '❌ Remover dos Salvos' : '⭐ Salvar na minha Lista';
+    
+    // Formatação Markdown para HTML
+    const formattedSermon = data.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+    
+    elements.sermonResult.innerHTML = `
+        <h2>${sermonData.topic}</h2>
+        <div class="sermon-content">${formattedSermon}</div>
+        <div class="sermon-actions" style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;">
+          <button onclick="saveAsPdf()" style="width: 100%; padding: 12px; font-size: 1.1em; border-radius: 8px;">Baixar em PDF</button>
+          
+          <button id="toggle-save-btn" style="width: 100%; padding: 12px; font-size: 1.1em; border-radius: 8px; background-color: ${btnColor}; color: white; border: none; cursor: pointer; font-weight: bold;">${btnText}</button>
+          
+          <button onclick="startNewSermon()" style="width: 100%; padding: 12px; font-size: 1.1em; border-radius: 8px; background-color: #757575; color: white; border: none; cursor: pointer;">Voltar ao Início</button>
+        </div>`;
+        
+    elements.sermonResult.style.display = 'block';
+
+    const toggleSaveBtn = document.getElementById('toggle-save-btn');
+    if (toggleSaveBtn && data.id) {
+        toggleSaveBtn.onclick = () => {
+            const endpoint = isSaved ? `/api/sermon/${data.id}` : '/api/sermon/save';
+            const method = isSaved ? 'DELETE' : 'POST';
+
+            toggleSaveBtn.disabled = true;
+            toggleSaveBtn.innerText = "Atualizando...";
+
+            fetch(endpoint, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: data.id })
+            })
+            .then(res => res.json())
+            .then(resData => {
+                if (resData.success) {
+                    // Atualiza a tela recarregando o próprio objeto com o novo status
+                    data.saved = !isSaved;
+                    displayGeneratedSermon(data); 
+                } else {
+                    alert("Erro ao atualizar.");
+                    toggleSaveBtn.disabled = false;
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                toggleSaveBtn.disabled = false;
+            });
+        };
+    } else if (!data.id) {
+        // Se não tiver ID (caso muito raro por erro de retorno), esconde o botão
+        toggleSaveBtn.style.display = 'none';
+    }
+}
+
+// ===================================================================
+// SEÇÃO 4: EXPORTAÇÃO DE PDF
+// ===================================================================
 
 function saveAsPdf() {
   const sermonContent = document.querySelector('.sermon-content');
@@ -254,11 +438,7 @@ function saveAsPdf() {
   
   try {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({
-      orientation: 'p',
-      unit: 'mm',
-      format: 'a4'
-    });
+    const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
 
     const htmlContent = sermonContent.innerHTML;
     const margin = 10;
@@ -308,109 +488,4 @@ function saveAsPdf() {
     logErrorToServer('error', `Falha ao gerar PDF: ${error.message}`);
     alert('Ocorreu um erro ao gerar o PDF. A funcionalidade pode não ser compatível com seu navegador. Tente salvar o texto manualmente.');
   }
-}
-
-// ===================================================================
-// SEÇÃO 3: FUNÇÕES DE HISTÓRICO DE SERMÕES (NOVO)
-// ===================================================================
-
-function hideMainContainers() {
-    elements.stepContainer.style.display = 'none';
-    elements.sermonResult.style.display = 'none';
-    elements.errorContainer.style.display = 'none';
-}
-
-function fetchMySermons() {
-    hideMainContainers();
-    elements.sermonsListContainer.style.display = 'none';
-    elements.loadingText.textContent = "Buscando seus sermões...";
-    elements.loading.style.display = 'block';
-
-    fetch('/api/my-sermons')
-        .then(res => {
-            if (!res.ok) throw new Error('Erro ao buscar meus sermões');
-            return res.json();
-        })
-        .then(data => {
-            elements.loading.style.display = 'none';
-            renderSermonList(data.sermons || [], "Meus Sermões (Últimos 20)");
-        })
-        .catch(err => {
-            console.error(err);
-            elements.loading.style.display = 'none';
-            alert("Não foi possível carregar o histórico de sermões. Tente novamente.");
-            startNewSermon();
-        });
-}
-
-function fetchRecentSermons() {
-    hideMainContainers();
-    elements.sermonsListContainer.style.display = 'none';
-    elements.loadingText.textContent = "Buscando as últimas mensagens preparadas...";
-    elements.loading.style.display = 'block';
-
-    fetch('/api/recent-sermons')
-        .then(res => {
-            if (!res.ok) throw new Error('Erro ao buscar sermões recentes');
-            return res.json();
-        })
-        .then(data => {
-            elements.loading.style.display = 'none';
-            renderSermonList(data.sermons || [], "Últimas Mensagens (Plataforma)");
-        })
-        .catch(err => {
-            console.error(err);
-            elements.loading.style.display = 'none';
-            alert("Não foi possível carregar as mensagens recentes. Tente novamente.");
-            startNewSermon();
-        });
-}
-
-function renderSermonList(sermons, title) {
-    elements.sermonsListTitle.textContent = title;
-    elements.sermonsListContent.innerHTML = '';
-
-    if (sermons.length === 0) {
-        elements.sermonsListContent.innerHTML = '<p>Nenhum sermão encontrado.</p>';
-    } else {
-        sermons.forEach(sermon => {
-            const dateStr = sermon.created_at ? new Date(sermon.created_at).toLocaleDateString('pt-BR') : 'Data desconhecida';
-            const item = document.createElement('div');
-            item.className = 'sermon-list-item';
-            
-            // Limpa formatação básica (se houver prefixos como "A)")
-            const cleanType = sermon.type.replace(/^[A-Z]\)\s*/, '').trim();
-            const cleanDuration = sermon.duration;
-
-            item.innerHTML = `
-                <h4>${sermon.topic}</h4>
-                <p><strong>Público:</strong> ${sermon.audience} | <strong>Tipo:</strong> ${cleanType}</p>
-                <p><strong>Duração:</strong> ${cleanDuration} | <strong>Data:</strong> ${dateStr}</p>
-            `;
-            
-            item.onclick = () => displaySavedSermon(sermon);
-            elements.sermonsListContent.appendChild(item);
-        });
-    }
-
-    elements.sermonsListContainer.style.display = 'block';
-}
-
-function displaySavedSermon(sermon) {
-    elements.sermonsListContainer.style.display = 'none';
-    
-    // Atualiza a variável global para que a exportação em PDF saiba o nome correto do arquivo
-    sermonData.topic = sermon.topic;
-
-    const formattedSermon = sermon.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
-    
-    elements.sermonResult.innerHTML = `
-        <h2>${sermon.topic}</h2>
-        <div class="sermon-content">${formattedSermon}</div>
-        <div class="sermon-actions">
-          <button onclick="saveAsPdf()">Salvar (PDF)</button>
-          <button onclick="startNewSermon()" style="background-color: #757575;">Voltar ao Início</button>
-        </div>`;
-        
-    elements.sermonResult.style.display = 'block';
 }
