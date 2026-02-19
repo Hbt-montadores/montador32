@@ -16,7 +16,6 @@ const express = require("express");
 const path = require("path");
 const fetch = require("node-fetch");
 const session = require("express-session");
-const PgStore = require("connect-pg-simple")(session);
 const rateLimit = require('express-rate-limit');
 const fs = require('fs');
 const csv = require('csv-parser');
@@ -108,14 +107,9 @@ const loginLimiter = rateLimit({
     legacyHeaders: false,
 });
 
-// Configuração do Store de Sessão com Prune Desativado
+// Configuração do Store de Sessão utilizando o padrão MemoryStore
 app.use(
   session({
-    store: new PgStore({ 
-        pool: pool, 
-        tableName: 'user_sessions',
-        pruneSessionInterval: false // Desativa a limpeza automática a cada requisição
-    }),
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
@@ -869,7 +863,7 @@ function getPromptConfig(sermonType, duration) {
             'Entre 30 e 40 min': { structure: 'Siga esta estrutura: 1. Introdução. 2. Divisão do texto bíblico em 3 pontos principais. 3. Desenvolvimento de cada ponto com uma explicação clara. 4. Aplicação para cada ponto. 5. Conclusão.', max_tokens: 1900 },
             'Entre 40 e 50 min': { structure: 'Siga esta estrutura: 1. Introdução com ilustração (dois parágrafos curtos). 2. Contexto da passagem bíblica (dois parágrafos curtos). 3. Divisão do texto bíblico em 3 pontos, com breve exegese (dois parágrafos curtos por ponto). 4. Aplicação (dois parágrafos curtos). 5. Conclusão com apelo (dois parágrafos curtos).', max_tokens: 2500 },
             'Entre 50 e 60 min': { structure: 'Siga esta estrutura: 1. Introdução. 2. Contexto. 3. Divisão do texto bíblico em pontos lógicos. 4. Desenvolvimento aprofundado de cada ponto. 5. Análise de palavras-chave. 6. Ilustrações. 7. Conclusão e Oração.', max_tokens: 3500 },
-            'Acima de 1 hora': { structure: 'Siga esta estrutura: 1. Introdução. 2. Contexto completo. 3. Divisão do texto bíblico em todos os seus pontos naturais. 4. Desenvolvimento exaustivo de cada ponto, com exegese e referências cruzadas. 5. Análise de palavras no original. 6. Múltiplas Aplicações. 7. Curiosidades. 8. Conclusão.', max_tokens: 5000 }
+            'Acima de 1 hora': { structure: 'Siga esta estrutura: 1. Introdução. 2. Contexto completo. 3. Divisão do texto bíblico em todos seus pontos naturais. 4. Desenvolvimento exaustivo de cada ponto, com exegese e referências cruzadas. 5. Análise de palavras no original. 6. Múltiplas Aplicações. 7. Curiosidades. 8. Conclusão.', max_tokens: 5000 }
         },
         'Temático': {
             'Entre 1 e 10 min': { structure: 'Siga esta estrutura: 1. Uma linha de Apresentação do Tema. 2. Uma linha de explanação com um versículo bíblico principal. 3. Uma linha de Aplicação.', max_tokens: 450 },
@@ -1040,14 +1034,26 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                     generatedContent
                 );
 
-                await logSermonActivity({
-                    user_email: req.session.user.email, sermon_topic: topic, sermon_audience: audience,
-                    sermon_type: sermonType, sermon_duration: duration, model_used: promptConfig.model, prompt_instruction: promptConfig.structure
-                });
-
-                delete req.session.sermonData;
-                
+                // Responder ao usuário imediatamente após salvar, estabelecendo o "ponto sem volta".
+                // Retornar a resposta (return res.json) garante que encerramos o ciclo HTTP com sucesso.
                 res.json({ sermon: generatedContent, id: savedSermonId, saved: false, is_cache: false });
+
+                // Tarefas secundárias blindadas com try/catch para não afetarem o fluxo se falharem.
+                try {
+                    await logSermonActivity({
+                        user_email: req.session.user.email, sermon_topic: topic, sermon_audience: audience,
+                        sermon_type: sermonType, sermon_duration: duration, model_used: promptConfig.model, prompt_instruction: promptConfig.structure
+                    });
+                } catch (logErr) {
+                    console.error("[BACKEND WARNING] Falha ao registrar logSermonActivity (ignorado):", logErr);
+                }
+
+                try {
+                    delete req.session.sermonData;
+                } catch (sessErr) {
+                    console.error("[BACKEND WARNING] Falha ao limpar req.session.sermonData (ignorado):", sessErr);
+                }
+
             } finally {
                 activeGenerations--;
                 if (generationQueue.length > 0) {
