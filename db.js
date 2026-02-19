@@ -1,3 +1,4 @@
+javascript
 // db.js - Versão de Diagnóstico com Logs de Pool e Regras de Cooldown
 
 const { Pool } = require('pg');
@@ -72,9 +73,12 @@ pool.on('error', (err) => {
       );
     `);
     
-    // --- MIGRAÇÃO: Adicionando colunas caso a tabela já exista ---
+    // --- MIGRAÇÃO: Garantindo que todas as colunas existam caso a tabela já tenha sido criada ---
     await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS theme_original TEXT;`);
     await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS theme_normalized TEXT;`);
+    await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS audience TEXT;`);
+    await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS sermon_type TEXT;`);
+    await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS duration TEXT;`);
     await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS saved BOOLEAN DEFAULT false;`);
 
     // --- Índice composto otimizado para a tabela 'sermons' ---
