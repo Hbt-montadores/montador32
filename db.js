@@ -60,8 +60,9 @@ pool.on('error', (err) => {
       CREATE TABLE IF NOT EXISTS sermons (
         id SERIAL PRIMARY KEY,
         user_email TEXT NOT NULL,
-        theme_original TEXT NOT NULL,
-        theme_normalized TEXT NOT NULL,
+        topic TEXT, -- Mantido por compatibilidade retroativa temporária
+        theme_original TEXT,
+        theme_normalized TEXT,
         audience TEXT NOT NULL,
         sermon_type TEXT NOT NULL,
         duration TEXT NOT NULL,
@@ -71,6 +72,11 @@ pool.on('error', (err) => {
       );
     `);
     
+    // --- MIGRAÇÃO: Adicionando colunas caso a tabela já exista ---
+    await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS theme_original TEXT;`);
+    await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS theme_normalized TEXT;`);
+    await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS saved BOOLEAN DEFAULT false;`);
+
     // --- Índice composto otimizado para a tabela 'sermons' ---
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_sermons_normalized_composite 
@@ -301,7 +307,7 @@ async function markSermonAsSaved(email, id, savedStatus) {
 
 async function getUserRecentSermons(email, limit = 20) {
     const query = `
-        SELECT id, theme_original as topic, audience, sermon_type as type, duration, content, created_at, saved
+        SELECT id, COALESCE(theme_original, topic) as topic, audience, sermon_type as type, duration, content, created_at, saved
         FROM sermons
         WHERE user_email = $1
         ORDER BY created_at DESC
