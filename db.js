@@ -61,6 +61,27 @@ pool.on('error', (err) => {
     
     console.log('✔️ Tabela "customers" pronta e migrada.');
 
+    // --- Tabela 'sermons' ---
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sermons (
+        id SERIAL PRIMARY KEY,
+        user_email TEXT NOT NULL,
+        topic TEXT NOT NULL,
+        audience TEXT NOT NULL,
+        type TEXT NOT NULL,
+        duration TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      );
+    `);
+    
+    // --- Índice composto para a tabela 'sermons' ---
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_sermons_composite 
+      ON sermons (user_email, topic, audience, type, duration);
+    `);
+    console.log('✔️ Tabela "sermons" pronta e migrada.');
+
     // --- Tabela 'access_control' ---
     await client.query(`
       CREATE TABLE IF NOT EXISTS access_control (
@@ -213,6 +234,80 @@ async function logSermonActivity(details) {
     );
 }
 
+// --- NOVAS FUNÇÕES: GERENCIAMENTO DE SERMÕES ---
+
+async function getIdenticalSermon(email, topic, audience, type, duration) {
+    const query = `
+        SELECT content FROM sermons
+        WHERE user_email = $1 AND topic = $2 AND audience = $3 AND type = $4 AND duration = $5
+        ORDER BY created_at DESC LIMIT 1
+    `;
+    const { rows } = await pool.query(query, [email.toLowerCase(), topic, audience, type, duration]);
+    return rows[0] || null;
+}
+
+async function saveGeneratedSermon(email, topic, audience, type, duration, content) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        const insertQuery = `
+            INSERT INTO sermons (user_email, topic, audience, type, duration, content)
+            VALUES ($1, $2, $3, $4, $5, $6)
+        `;
+        await client.query(insertQuery, [email.toLowerCase(), topic, audience, type, duration, content]);
+
+        const updateCustomerQuery = `
+            UPDATE customers
+            SET last_sermon_topic = $2,
+                last_sermon_audience = $3,
+                last_sermon_type = $4,
+                last_sermon_duration = $5,
+                last_sermon_generated_at = NOW()
+            WHERE email = $1
+        `;
+        await client.query(updateCustomerQuery, [email.toLowerCase(), topic, audience, type, duration]);
+
+        await client.query('COMMIT');
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error('[ERRO] Falha ao salvar sermão gerado:', e);
+        throw e;
+    } finally {
+        client.release();
+    }
+}
+
+async function getUserRecentSermons(email, limit = 20) {
+    const query = `
+        SELECT id, topic, audience, type, duration, content, created_at
+        FROM sermons
+        WHERE user_email = $1
+        ORDER BY created_at DESC
+        LIMIT $2
+    `;
+    const { rows } = await pool.query(query, [email.toLowerCase(), limit]);
+    return rows;
+}
+
+async function getPlatformRecentSermons(limit = 20) {
+    const query = `
+        SELECT * FROM (
+            SELECT id, user_email, topic, audience, type, duration, content, created_at,
+                   ROW_NUMBER() OVER(
+                       PARTITION BY topic, audience, type, duration 
+                       ORDER BY created_at DESC
+                   ) as rn
+            FROM sermons
+        ) sub
+        WHERE rn = 1
+        ORDER BY created_at DESC
+        LIMIT $1
+    `;
+    const { rows } = await pool.query(query, [limit]);
+    return rows;
+}
+
 module.exports = {
   pool,
   getCustomerRecordByEmail,
@@ -224,5 +319,9 @@ module.exports = {
   revokeAccessByInvoice,
   registerProspect,
   updateGraceSermons,
-  logSermonActivity
+  logSermonActivity,
+  getIdenticalSermon,
+  saveGeneratedSermon,
+  getUserRecentSermons,
+  getPlatformRecentSermons
 };
