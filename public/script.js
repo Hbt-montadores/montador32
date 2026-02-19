@@ -1,4 +1,4 @@
-// public/script.js - Versão Final com Correção de Sintaxe no PDF
+// public/script.js - Versão Final com Correção de Sintaxe no PDF e Histórico de Sermões
 
 // ===================================================================
 // SEÇÃO 1: LOGGING DE ERROS DO CLIENTE E SERVICE WORKER
@@ -67,8 +67,24 @@ window.addEventListener('load', () => {
         loading: document.getElementById('loading'),
         loadingText: document.getElementById('loading-text'),
         sermonResult: document.getElementById('sermon-result'),
-        errorContainer: document.getElementById('error-container')
+        errorContainer: document.getElementById('error-container'),
+        
+        // Novos elementos para o histórico
+        mySermonsBtn: document.getElementById('my-sermons-button'),
+        recentSermonsBtn: document.getElementById('recent-sermons-button'),
+        sermonsListContainer: document.getElementById('sermons-list-container'),
+        sermonsListTitle: document.getElementById('sermons-list-title'),
+        sermonsListContent: document.getElementById('sermons-list-content')
     };
+
+    // Listeners dos novos botões
+    if (elements.mySermonsBtn) {
+        elements.mySermonsBtn.addEventListener('click', fetchMySermons);
+    }
+    if (elements.recentSermonsBtn) {
+        elements.recentSermonsBtn.addEventListener('click', fetchRecentSermons);
+    }
+
     startNewSermon();
   }
 });
@@ -88,6 +104,10 @@ function startNewSermon() {
   elements.sermonResult.style.display = 'none';
   elements.loading.style.display = 'none';
   elements.errorContainer.style.display = 'none';
+  
+  if (elements.sermonsListContainer) {
+      elements.sermonsListContainer.style.display = 'none';
+  }
 
   if (elements.loadingText) elements.loadingText.textContent = "Gerando sermão, por favor aguarde...";
   clearInterval(loadingInterval);
@@ -288,4 +308,109 @@ function saveAsPdf() {
     logErrorToServer('error', `Falha ao gerar PDF: ${error.message}`);
     alert('Ocorreu um erro ao gerar o PDF. A funcionalidade pode não ser compatível com seu navegador. Tente salvar o texto manualmente.');
   }
+}
+
+// ===================================================================
+// SEÇÃO 3: FUNÇÕES DE HISTÓRICO DE SERMÕES (NOVO)
+// ===================================================================
+
+function hideMainContainers() {
+    elements.stepContainer.style.display = 'none';
+    elements.sermonResult.style.display = 'none';
+    elements.errorContainer.style.display = 'none';
+}
+
+function fetchMySermons() {
+    hideMainContainers();
+    elements.sermonsListContainer.style.display = 'none';
+    elements.loadingText.textContent = "Buscando seus sermões...";
+    elements.loading.style.display = 'block';
+
+    fetch('/api/my-sermons')
+        .then(res => {
+            if (!res.ok) throw new Error('Erro ao buscar meus sermões');
+            return res.json();
+        })
+        .then(data => {
+            elements.loading.style.display = 'none';
+            renderSermonList(data.sermons || [], "Meus Sermões (Últimos 20)");
+        })
+        .catch(err => {
+            console.error(err);
+            elements.loading.style.display = 'none';
+            alert("Não foi possível carregar o histórico de sermões. Tente novamente.");
+            startNewSermon();
+        });
+}
+
+function fetchRecentSermons() {
+    hideMainContainers();
+    elements.sermonsListContainer.style.display = 'none';
+    elements.loadingText.textContent = "Buscando as últimas mensagens preparadas...";
+    elements.loading.style.display = 'block';
+
+    fetch('/api/recent-sermons')
+        .then(res => {
+            if (!res.ok) throw new Error('Erro ao buscar sermões recentes');
+            return res.json();
+        })
+        .then(data => {
+            elements.loading.style.display = 'none';
+            renderSermonList(data.sermons || [], "Últimas Mensagens (Plataforma)");
+        })
+        .catch(err => {
+            console.error(err);
+            elements.loading.style.display = 'none';
+            alert("Não foi possível carregar as mensagens recentes. Tente novamente.");
+            startNewSermon();
+        });
+}
+
+function renderSermonList(sermons, title) {
+    elements.sermonsListTitle.textContent = title;
+    elements.sermonsListContent.innerHTML = '';
+
+    if (sermons.length === 0) {
+        elements.sermonsListContent.innerHTML = '<p>Nenhum sermão encontrado.</p>';
+    } else {
+        sermons.forEach(sermon => {
+            const dateStr = sermon.created_at ? new Date(sermon.created_at).toLocaleDateString('pt-BR') : 'Data desconhecida';
+            const item = document.createElement('div');
+            item.className = 'sermon-list-item';
+            
+            // Limpa formatação básica (se houver prefixos como "A)")
+            const cleanType = sermon.type.replace(/^[A-Z]\)\s*/, '').trim();
+            const cleanDuration = sermon.duration;
+
+            item.innerHTML = `
+                <h4>${sermon.topic}</h4>
+                <p><strong>Público:</strong> ${sermon.audience} | <strong>Tipo:</strong> ${cleanType}</p>
+                <p><strong>Duração:</strong> ${cleanDuration} | <strong>Data:</strong> ${dateStr}</p>
+            `;
+            
+            item.onclick = () => displaySavedSermon(sermon);
+            elements.sermonsListContent.appendChild(item);
+        });
+    }
+
+    elements.sermonsListContainer.style.display = 'block';
+}
+
+function displaySavedSermon(sermon) {
+    elements.sermonsListContainer.style.display = 'none';
+    
+    // Atualiza a variável global para que a exportação em PDF saiba o nome correto do arquivo
+    sermonData.topic = sermon.topic;
+
+    const formattedSermon = sermon.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+    
+    elements.sermonResult.innerHTML = `
+        <h2>${sermon.topic}</h2>
+        <div class="sermon-content">${formattedSermon}</div>
+        <div class="sermon-actions">
+          <button onclick="saveAsPdf()">Salvar (PDF)</button>
+          <button onclick="startNewSermon()" style="background-color: #757575;">Voltar ao Início</button>
+        </div>`;
+        
+    elements.sermonResult.style.display = 'block';
 }
