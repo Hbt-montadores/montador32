@@ -31,7 +31,7 @@ const {
 } = require('./db');
 
 // --- VARIÁVEIS GLOBAIS DE CONTROLE DE CONCORRÊNCIA ---
-// Limite de gerações simultâneas na etapa 4
+// Limite de gerações simultâneas na etapa 4 (OpenAI)
 let activeGenerations = 0;
 const MAX_CONCURRENT_GENERATIONS = 2;
 const generationQueue = []; // Fila de espera (resolvers das Promises)
@@ -73,9 +73,6 @@ const port = process.env.PORT || 3000;
 app.use(Sentry.Handlers.requestHandler());
 app.use(Sentry.Handlers.tracingHandler());
 
-
-// --- A PARTIR DAQUI, SEGUEM SUAS CONFIGURAÇÕES E ROTAS NORMAIS ---
-
 app.set('trust proxy', 1);
 
 // Configuração do Web Push
@@ -108,9 +105,14 @@ const loginLimiter = rateLimit({
     legacyHeaders: false,
 });
 
+// Configuração do Store de Sessão com Prune Desativado
 app.use(
   session({
-    store: new PgStore({ pool: pool, tableName: 'user_sessions' }),
+    store: new PgStore({ 
+        pool: pool, 
+        tableName: 'user_sessions',
+        pruneSessionInterval: false // Desativa a limpeza automática a cada requisição
+    }),
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
@@ -917,7 +919,7 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
             }
 
             // --- LÓGICA DE CONTROLE DE CONCORRÊNCIA ---
-            // Tenta obter uma vaga (slot)
+            // Tenta obter uma vaga (slot) para chamar a OpenAI
             try {
                 await waitForSlot();
             } catch (err) {
@@ -960,9 +962,9 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                 delete req.session.sermonData;
                 res.json({ sermon: data.choices[0].message.content });
             } finally {
-                // Sempre decrementa o contador, mesmo em caso de erro na OpenAI
+                // Sempre decrementa o contador no final, liberando o slot
                 activeGenerations--;
-                // Se houver alguém na fila, libera o próximo
+                // Se houver alguém na fila de espera, libera o próximo
                 if (generationQueue.length > 0) {
                     const nextResolver = generationQueue.shift();
                     nextResolver(); 
