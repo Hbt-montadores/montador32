@@ -1034,9 +1034,9 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                     generatedContent
                 );
 
-                // Responder ao usuário imediatamente após salvar, estabelecendo o "ponto sem volta".
-                // Retornar a resposta (return res.json) garante que encerramos o ciclo HTTP com sucesso.
+                console.log(`[Etapa 4 - Diagnóstico] Preparando para enviar res.json para ${req.session.user.email}`);
                 res.json({ sermon: generatedContent, id: savedSermonId, saved: false, is_cache: false });
+                console.log(`[Etapa 4 - Diagnóstico] res.json enviado com sucesso para ${req.session.user.email}`);
 
                 // Tarefas secundárias blindadas com try/catch para não afetarem o fluxo se falharem.
                 try {
