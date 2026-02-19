@@ -8,14 +8,14 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isProduction ? { rejectUnauthorized: false } : false,
   // Configurações de Pool ajustadas para evitar quedas por timeouts transitórios
-  connectionTimeoutMillis: 5000, // Aumentado para 5 segundos para maior tolerância
-  idleTimeoutMillis: 10000,     // Timeout para encerramento de clientes ociosos (10 segundos)
-  max: 5,                       // Limite de conexões reduzido para maior estabilidade em planos básicos
+  connectionTimeoutMillis: 10000, // Aumentado para 10 segundos para maior tolerância
+  idleTimeoutMillis: 10000,      // Timeout para encerramento de clientes ociosos (10 segundos)
+  max: 5,                        // Limite de conexões reduzido para maior estabilidade em planos básicos
 });
 
 // ===================================================================
 // TRATAMENTO DE ERROS DO POOL:
-// Alterado para não encerrar o processo (process.exit removido)
+// AlterADO para não encerrar o processo (process.exit removido)
 // ===================================================================
 pool.on('error', (err) => {
   console.error('[ERRO NO POOL DE CONEXÕES PG]', err);
