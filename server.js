@@ -27,7 +27,9 @@ const {
     updateAnnualAccess, updateMonthlyStatus, updateLifetimeAccess, revokeAccessByInvoice,
     logSermonActivity, updateGraceSermons, registerProspect,
     savePushSubscription, getAllPushSubscriptions,
-    checkIfUserIsSubscribed, deletePushSubscription
+    checkIfUserIsSubscribed, deletePushSubscription,
+    // Novas importações para o sistema de histórico:
+    getIdenticalSermon, saveGeneratedSermon, getUserRecentSermons, getPlatformRecentSermons
 } = require('./db');
 
 // --- VARIÁVEIS GLOBAIS DE CONTROLE DE CONCORRÊNCIA ---
@@ -807,6 +809,30 @@ app.get("/api/check-push-subscription", requireLogin, async (req, res) => {
     }
 });
 
+// --- ROTAS DE HISTÓRICO DE SERMÕES ---
+
+app.get("/api/my-sermons", requireLogin, async (req, res) => {
+    try {
+        const sermons = await getUserRecentSermons(req.session.user.email, 20);
+        res.json({ sermons });
+    } catch (error) {
+        Sentry.captureException(error);
+        console.error("[BACKEND ERROR] Erro ao buscar meus sermões:", error);
+        res.status(500).json({ error: "Erro ao buscar histórico de sermões." });
+    }
+});
+
+app.get("/api/recent-sermons", requireLogin, async (req, res) => {
+    try {
+        const sermons = await getPlatformRecentSermons(20);
+        res.json({ sermons });
+    } catch (error) {
+        Sentry.captureException(error);
+        console.error("[BACKEND ERROR] Erro ao buscar sermões recentes:", error);
+        res.status(500).json({ error: "Erro ao buscar sermões recentes da plataforma." });
+    }
+});
+
 function getPromptConfig(sermonType, duration) {
     const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '').trim();
     const fallbackConfig = { structure: 'Gere um sermão completo com exegese e aplicação prática.', max_tokens: 2000 };
@@ -919,80 +945,39 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
             }
 
             const { topic, audience, sermonType, duration } = req.session.sermonData;
-            const userEmail = req.session.user.email;
 
-            // --- 1. VERIFICAÇÃO DE SERMÃO IDÊNTICO (Bypass da OpenAI) ---
-            const identicalQuery = `
-                SELECT sermon_content 
-                FROM activity_log 
-                WHERE user_email = $1 
-                  AND sermon_topic = $2 
-                  AND sermon_audience = $3 
-                  AND sermon_type = $4 
-                  AND sermon_duration = $5 
-                  AND sermon_content IS NOT NULL
-                ORDER BY created_at DESC LIMIT 1
-            `;
-            const identicalResult = await pool.query(identicalQuery, [userEmail, topic, audience, sermonType, duration]);
-            
-            if (identicalResult.rows.length > 0) {
-                console.log(`[Cache Hit] Retornando sermão idêntico salvo para ${userEmail}. Bypass da OpenAI acionado.`);
+            // --- VERIFICAÇÃO DE SERMÃO IDÊNTICO (CACHE) ---
+            const identicalSermon = await getIdenticalSermon(req.session.user.email, topic, audience, sermonType, duration);
+            if (identicalSermon) {
+                console.log(`[Cache Hit] Retornando sermão já gerado anteriormente para ${req.session.user.email}.`);
                 delete req.session.sermonData;
-                return res.json({ sermon: identicalResult.rows[0].sermon_content });
+                return res.json({ sermon: identicalSermon.content });
             }
 
-            // --- 2. REGRAS PARA USUÁRIO MENSAL ---
-            if (req.session.user.status === 'monthly_paid') {
-                const lastSermonQuery = `SELECT created_at, sermon_topic FROM activity_log WHERE user_email = $1 ORDER BY created_at DESC LIMIT 1`;
-                const lastSermonResult = await pool.query(lastSermonQuery, [userEmail]);
-                
-                if (lastSermonResult.rows.length > 0) {
-                    const lastSermon = lastSermonResult.rows[0];
-                    const lastDateMs = new Date(lastSermon.created_at).getTime();
-                    const nowMs = Date.now();
-                    const diffMinutes = (nowMs - lastDateMs) / (1000 * 60);
-                    
-                    if (diffMinutes < 15) {
-                        // a) Se duração > 40 minutos
-                        const longDurations = ['Entre 40 e 50 min', 'Entre 50 e 60 min', 'Acima de 1 hora'];
-                        if (longDurations.includes(duration)) {
-                            return res.json({ 
-                                error: "Rate Limit Mensal", 
-                                message: "Seu último sermão foi uma mensagem mais extensa 🙏\n\nPara manter a organização e qualidade da preparação, aguarde alguns minutos antes de iniciar outro desse mesmo porte." 
-                            });
-                        }
-                        
-                        // b) Se tema igual ao último tema gerado
-                        if (lastSermon.sermon_topic.trim().toLowerCase() === topic.trim().toLowerCase()) {
-                            return res.json({ 
-                                error: "Rate Limit Mensal", 
-                                message: "Você acabou de preparar uma mensagem sobre este tema 😊\n\nAguarde alguns minutos antes de gerar uma nova sobre o mesmo assunto." 
-                            });
-                        }
-                    }
-                }
-            }
-
-            // --- 3. LÓGICA DE CONTROLE DE CONCORRÊNCIA (Apenas se passar pelas validações) ---
+            // --- LÓGICA DE CONTROLE DE CONCORRÊNCIA ---
+            // Tenta obter uma vaga (slot) para chamar a OpenAI
             try {
                 await waitForSlot();
             } catch (err) {
+                // Se exceder o tempo limite (20s) na fila
                 return res.status(503).json({ 
                     error: "Service Busy", 
                     message: "Estamos organizando os próximos passos da sua mensagem. Em instantes iniciaremos a preparação do seu sermão." 
                 });
             }
 
+            // Se obteve vaga, incrementa o contador e prossegue
             activeGenerations++;
 
             try {
-                console.log(`[Acesso Concedido] Gerando sermão para ${userEmail}.`);
+                console.log(`[Acesso Concedido] Gerando sermão para ${req.session.user.email}.`);
+                
                 const promptConfig = getPromptConfig(sermonType, duration);
                 const cleanSermonType = sermonType.replace(/^[A-Z]\)\s*/, '').trim();
                 const cleanAudience = audience.replace(/^[A-Z]\)\s*/, '').trim();
                 const prompt = `Gere um sermão do tipo ${cleanSermonType} para um público de ${cleanAudience} sobre o tema "${topic}". ${promptConfig.structure}`;
                 
-                console.log(`[OpenAI] Enviando requisição para ${userEmail}. Modelo: ${promptConfig.model}`);
+                console.log(`[OpenAI] Enviando requisição para ${req.session.user.email}. Modelo: ${promptConfig.model}`);
                 const data = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
                     method: "POST",
                     headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
@@ -1004,24 +989,23 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                     }),
                 });
 
-                console.log(`[OpenAI] Resposta recebida para ${userEmail}. Salvando log e texto...`);
+                const generatedContent = data.choices[0].message.content;
+                console.log(`[OpenAI] Resposta recebida para ${req.session.user.email}.`);
                 
-                // Salvando o conteúdo gerado para as futuras checagens de repetição
+                // SALVA O SERMÃO NO BANCO E ATUALIZA CUSTOMERS
+                await saveGeneratedSermon(req.session.user.email, topic, audience, sermonType, duration, generatedContent);
+
                 await logSermonActivity({
-                    user_email: userEmail, 
-                    sermon_topic: topic, 
-                    sermon_audience: audience,
-                    sermon_type: sermonType, 
-                    sermon_duration: duration, 
-                    model_used: promptConfig.model, 
-                    prompt_instruction: promptConfig.structure,
-                    sermon_content: data.choices[0].message.content
+                    user_email: req.session.user.email, sermon_topic: topic, sermon_audience: audience,
+                    sermon_type: sermonType, sermon_duration: duration, model_used: promptConfig.model, prompt_instruction: promptConfig.structure
                 });
 
                 delete req.session.sermonData;
-                res.json({ sermon: data.choices[0].message.content });
+                res.json({ sermon: generatedContent });
             } finally {
+                // Sempre decrementa o contador no final, liberando o slot
                 activeGenerations--;
+                // Se houver alguém na fila de espera, libera o próximo
                 if (generationQueue.length > 0) {
                     const nextResolver = generationQueue.shift();
                     nextResolver(); 
