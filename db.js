@@ -1,4 +1,3 @@
-javascript
 // db.js - Versão de Diagnóstico com Logs de Pool e Regras de Cooldown
 
 const { Pool } = require('pg');
