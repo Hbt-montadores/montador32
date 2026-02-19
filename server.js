@@ -928,6 +928,17 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
         if (step === 4) {
             req.session.sermonData.duration = userResponse;
             
+            // --- a) VALIDAÇÃO DEFENSIVA (ESSENCIAL PARA EVITAR O ERRO DE NULL) ---
+            const { topic, audience, sermonType, duration } = req.session.sermonData;
+            
+            if (!topic || !audience || !sermonType || !duration) {
+                console.error("[ERRO SESSÃO] Informações incompletas para geração de sermão:", req.session.sermonData);
+                return res.status(400).json({ 
+                    error: "Sessão inválida", 
+                    message: "Não foi possível recuperar todos os dados da sua escolha. Por favor, reinicie o processo." 
+                });
+            }
+
             const customer = await getCustomerRecordByEmail(req.session.user.email);
             const accessRule = await getAccessControlRule(req.session.user.email);
             const now = new Date();
@@ -960,11 +971,10 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                 return res.status(403).json({ error: "Acesso negado.", message: "Sua assinatura expirou.", renewal_url: "https://casadopregador.com/pv/montador3anual" });
             }
 
-            const { topic, audience, sermonType, duration } = req.session.sermonData;
-            const theme_normalized = normalizeTheme(topic);
+            const topic_normalized = normalizeTheme(topic);
 
-            // --- b) VERIFICAÇÃO DE SERMÃO IDÊNTICO (CACHE OBRIGATÓRIO) ---
-            const identicalSermon = await getIdenticalSermon(req.session.user.email, theme_normalized, audience, sermonType, duration);
+            // --- b) VERIFICAÇÃO DE SERMÃO IDÊNTICO (CACHE CANÔNICO) ---
+            const identicalSermon = await getIdenticalSermon(req.session.user.email, topic_normalized, audience, sermonType, duration);
             if (identicalSermon) {
                 console.log(`[Cache Hit] Retornando sermão idêntico salvo para ${req.session.user.email}.`);
                 delete req.session.sermonData;
@@ -978,7 +988,7 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
 
             // --- c) VERIFICAÇÃO DE COOLDOWN MENSAL ---
             if (req.session.user.status === 'monthly_paid') {
-                const cooldown = await checkMonthlyCooldown(req.session.user.email, duration, theme_normalized);
+                const cooldown = await checkMonthlyCooldown(req.session.user.email, duration, topic_normalized);
                 if (cooldown.blocked) {
                     console.log(`[Cooldown Bloqueio] Usuário ${req.session.user.email}: ${cooldown.reason}`);
                     return res.status(429).json({ error: "Acesso temporariamente limitado.", message: cooldown.reason });
@@ -1019,11 +1029,11 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                 const generatedContent = data.choices[0].message.content;
                 console.log(`[OpenAI Sucesso] Resposta recebida para ${req.session.user.email}.`);
                 
-                // SALVA NO BANCO LOGO APÓS A RESPOSTA (Não mantém conexão aberta durante chamada de IA)
+                // SALVA NO BANCO USANDO O SCHEMA CANÔNICO
                 const savedSermonId = await saveGeneratedSermon(
                     req.session.user.email, 
                     topic, 
-                    theme_normalized, 
+                    topic_normalized, 
                     audience, 
                     sermonType, 
                     duration, 
@@ -1037,7 +1047,6 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
 
                 delete req.session.sermonData;
                 
-                // Retorna id e saved=false nativamente
                 res.json({ sermon: generatedContent, id: savedSermonId, saved: false, is_cache: false });
             } finally {
                 activeGenerations--;
