@@ -1034,9 +1034,9 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                     generatedContent
                 );
 
-                console.log(`[Etapa 4 - Diagnóstico] Preparando para enviar res.json para ${req.session.user.email}`);
-                res.json({ sermon: generatedContent, id: savedSermonId, saved: false, is_cache: false });
-                console.log(`[Etapa 4 - Diagnóstico] res.json enviado com sucesso para ${req.session.user.email}`);
+                console.log(`[Etapa 4 - Diagnóstico] Preparando para enviar a resposta com redirecionamento para ${req.session.user.email}`);
+                res.status(200).json({ success: true, redirect: "/meus-sermoes" });
+                console.log(`[Etapa 4 - Diagnóstico] Resposta com redirecionamento enviada com sucesso para ${req.session.user.email}`);
 
                 // Tarefas secundárias blindadas com try/catch para não afetarem o fluxo se falharem.
                 try {
