@@ -24,63 +24,113 @@
     <link rel="stylesheet" href="style.css">
 
     <style>
+        /* Estrutura Vertical para os botões do cabeçalho */
+        .header-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            align-items: flex-end; /* Alinha os botões à direita. Troque para flex-start se preferir à esquerda */
+            margin-top: 15px;
+        }
+
         .verses-header-button {
             background-color: #FF6B00;
             color: #ffffff;
             border: none;
-            border-radius: 999px;
-            padding: 8px 16px;
-            font-size: 0.9rem;
-            font-weight: 600;
+            border-radius: 8px; /* Mais quadrado para combinar com o empilhamento vertical */
+            padding: 10px 20px;
+            font-size: 1rem;
+            font-weight: bold;
             cursor: pointer;
             box-shadow: 0 3px 6px rgba(0,0,0,0.25);
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 6px;
-            margin-right: 12px;
-            white-space: nowrap;
+            width: 100%; /* Ocupa 100% da coluna */
+            transition: background-color 0.3s ease;
         }
-        .verses-header-button:focus {
-            outline: none;
-        }
+        .verses-header-button:hover { background-color: #E65100; }
+        .verses-header-button:focus { outline: none; }
 
-        /* Novo estilo para os botões de histórico no cabeçalho */
         .header-nav-button {
             background-color: #1565C0;
             color: #ffffff;
             border: none;
-            border-radius: 999px;
-            padding: 8px 16px;
-            font-size: 0.9rem;
-            font-weight: 600;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-size: 1rem;
+            font-weight: bold;
             cursor: pointer;
             box-shadow: 0 3px 6px rgba(0,0,0,0.25);
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 6px;
-            margin-right: 12px;
-            white-space: nowrap;
+            width: 100%; /* Ocupa 100% da coluna */
             transition: background-color 0.3s ease;
         }
-        .header-nav-button:focus {
-            outline: none;
-        }
-        .header-nav-button:hover {
-            background-color: #0D47A1;
-        }
+        .header-nav-button:hover { background-color: #0D47A1; }
+        .header-nav-button:focus { outline: none; }
         
-        /* Estilos básicos para a lista de sermões que será injetada */
+        /* Botão Sair Fixo no canto inferior direito */
+        .logout-link-fixed {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #D32F2F;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 1rem;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            z-index: 1000;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+        }
+        .logout-link-fixed:hover {
+            background-color: #B71C1C;
+            transform: translateY(-2px);
+        }
+
+        /* Overlay Centralizado para Geração (Substitui o antigo #loading) */
+        #loading-overlay {
+            position: fixed;
+            top: 0; 
+            left: 0; 
+            width: 100vw; 
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .loader-large {
+            border: 6px solid #333;
+            border-top: 6px solid #2196F3;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 25px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Estilos básicos para a lista de sermões */
         .sermon-list-item {
             background: #fff;
             border: 1px solid #ddd;
             border-radius: 8px;
             padding: 15px;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
             cursor: pointer;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             transition: transform 0.2s, box-shadow 0.2s;
+            position: relative;
         }
         .sermon-list-item:hover {
             transform: translateY(-2px);
@@ -88,13 +138,26 @@
             border-color: #1565C0;
         }
         .sermon-list-item h4 {
-            margin: 0 0 5px 0;
+            margin: 0 0 8px 0;
             color: #1565C0;
+            font-size: 1.2rem;
+            padding-right: 80px; /* Espaço para a tag de salvo */
         }
         .sermon-list-item p {
-            margin: 0;
-            font-size: 0.9em;
+            margin: 4px 0;
+            font-size: 0.95em;
             color: #555;
+        }
+        .saved-badge {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background-color: #4CAF50;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
         }
     </style>
 </head>
@@ -104,21 +167,15 @@
         <header class="app-header">
             <h1>Montador de Sermões 3.3</h1>
             <div class="header-actions">
-
                 <button id="verses-header-button" class="verses-header-button">
-                    📖 Versículos (Novo)
+                    📖 Versículos
                 </button>
 
                 <button id="my-sermons-button" class="header-nav-button">
                     📂 Meus Sermões
                 </button>
-                <button id="recent-sermons-button" class="header-nav-button">
-                    🌍 Últimas Mensagens
-                </button>
 
                 <button id="install-button" class="install-button" style="display: none;">Instalar App</button>
-
-                <a href="/logout" class="logout-link">Sair</a>
             </div>
         </header>
 
@@ -132,17 +189,12 @@
                 <div id="options" style="display: none;"></div>
             </div>
 
-            <div id="loading" style="display: none;">
-                <div class="loader"></div>
-                <p id="loading-text">Gerando seu sermão, por favor aguarde...</p>
-            </div>
-
             <div id="sermon-result" style="display: none;">
             </div>
             
             <div id="sermons-list-container" style="display: none;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <h2 id="sermons-list-title" style="margin: 0;">Lista de Sermões</h2>
+                    <h2 id="sermons-list-title" style="margin: 0;">Meus Sermões</h2>
                     <button onclick="startNewSermon()" style="padding: 10px 20px; background-color: #757575; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">Voltar</button>
                 </div>
                 <div id="sermons-list-content">
@@ -154,6 +206,14 @@
 
         </main>
     </div>
+
+    <div id="loading-overlay" style="display: none;">
+        <div class="loader-large"></div>
+        <h2 style="color: #ffffff; margin-top: 0; margin-bottom: 10px; font-size: 1.8rem;">Aguarde um momento...</h2>
+        <p id="loading-phrase" style="color: #90CAF9; font-size: 1.2rem; font-weight: 500; max-width: 90%; text-align: center; margin: 0;"></p>
+    </div>
+
+    <a href="/logout" class="logout-link-fixed">Sair</a>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="script.js"></script>
