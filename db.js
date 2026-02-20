@@ -1,16 +1,16 @@
-// db.js - Versão Definitiva com KeepAlive e Auto-Recuperação (Retry)
+// db.js - Versão Definitiva com KeepAlive, PgBouncer e Auto-Recuperação (Retry Avançado)
 
 const { Pool } = require('pg');
 
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Configurações de Pool ajustadas para evitar quedas no Supabase/Render
+// Configurações de Pool ajustadas para SUPABASE PGBOUNCER (Porta 6543)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isProduction ? { rejectUnauthorized: false } : false,
-  connectionTimeoutMillis: 15000, // 15 segundos para conectar
-  idleTimeoutMillis: 1000,       // Voltamos para 60s para evitar sobrecarga de recriação de conexões
-  max: 15,                        // Aumentado levemente para suportar picos de usuários
+  connectionTimeoutMillis: 20000, // Aumentado para 20s para dar tempo do banco responder em picos
+  idleTimeoutMillis: 5000,        // 5s é o ideal quando se usa PgBouncer
+  max: 15,                        // Aumentado para suportar picos de usuários
   keepAlive: true,                // A MÁGICA: Mantém a conexão ativa com "pings" de sistema
 });
 
@@ -23,17 +23,30 @@ pool.on('error', (err, client) => {
 });
 
 // ===================================================================
-// FUNÇÃO BLINDADA PARA CONSULTAS (AUTO-RETRY)
+// FUNÇÃO BLINDADA PARA CONSULTAS (AUTO-RETRY AVANÇADO)
 // ===================================================================
-// Se a conexão falhar, esta função tenta novamente automaticamente sem mostrar erro na tela.
-async function dbQuery(queryText, params, retries = 2) {
-    for (let i = 0; i < retries; i++) {
+// Se a conexão falhar por queda de rede, esta função tenta novamente automaticamente.
+async function dbQuery(queryText, params, retries = 3) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
         try {
             return await pool.query(queryText, params);
         } catch (error) {
-            if (i === retries - 1) throw error; // Se foi a última tentativa, repassa o erro
-            console.warn(`[DB RETRY] Conexão falhou. Tentando de novo em 1s... (${error.message})`);
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Aguarda 1s e tenta de novo
+            // Verifica se o erro foi uma queda de conexão ou timeout
+            const isNetworkError = error.message.includes('Connection terminated') ||
+                                   error.message.includes('timeout') ||
+                                   error.code === 'ECONNRESET' ||
+                                   error.code === 'EPIPE' ||
+                                   error.code === '08P01';
+
+            if (isNetworkError && attempt < retries) {
+                console.warn(`[DB RETRY ${attempt}/${retries}] Micro-queda detectada. Tentando de novo em 1.5s... (${error.message})`);
+                await new Promise(resolve => setTimeout(resolve, 1500)); // Aguarda 1.5s e tenta de novo
+            } else {
+                if (attempt === retries) {
+                    console.error(`[DB ERRO FINAL] Falha na query após ${retries} tentativas:`, error.message);
+                }
+                throw error; // Repassa o erro se não for de rede ou se acabaram as tentativas
+            }
         }
     }
 }
@@ -188,9 +201,9 @@ async function getAccessControlRule(email) {
     return rows[0] || null;
 }
 
-// Transação com Auto-Retry
-async function updateLifetimeAccess(email, name, phone, invoiceId, productId, retries = 2) {
-    for (let i = 0; i < retries; i++) {
+// Transação com Auto-Retry Inteligente
+async function updateLifetimeAccess(email, name, phone, invoiceId, productId, retries = 3) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
         let client;
         try {
             client = await pool.connect();
@@ -209,8 +222,15 @@ async function updateLifetimeAccess(email, name, phone, invoiceId, productId, re
             return;
         } catch (e) {
             if (client) await client.query('ROLLBACK').catch(() => {});
-            if (i === retries - 1) throw e;
-            await new Promise(res => setTimeout(res, 1000));
+            
+            const isNetworkError = e.message.includes('Connection terminated') || e.message.includes('timeout') || e.code === 'ECONNRESET';
+            
+            if (isNetworkError && attempt < retries) {
+                console.warn(`[DB RETRY TRANSACAO] Falha ao atualizar acesso vitalício. Tentando novamente...`);
+                await new Promise(res => setTimeout(res, 1500));
+            } else {
+                throw e;
+            }
         } finally {
             if (client) client.release();
         }
@@ -304,9 +324,9 @@ async function checkMonthlyCooldown(email, duration, topic_normalized) {
     return { blocked: false };
 }
 
-// Transação com Auto-Retry
-async function saveGeneratedSermon(email, topic, topic_normalized, audience, type, duration, content, retries = 2) {
-    for (let i = 0; i < retries; i++) {
+// Transação com Auto-Retry Inteligente
+async function saveGeneratedSermon(email, topic, topic_normalized, audience, type, duration, content, retries = 3) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
         let client;
         try {
             client = await pool.connect();
@@ -330,12 +350,16 @@ async function saveGeneratedSermon(email, topic, topic_normalized, audience, typ
             return newSermonId;
         } catch (e) {
             if (client) await client.query('ROLLBACK').catch(() => {});
-            if (i === retries - 1) {
+            
+            const isNetworkError = e.message.includes('Connection terminated') || e.message.includes('timeout') || e.code === 'ECONNRESET';
+            
+            if (isNetworkError && attempt < retries) {
+                console.warn(`[DB RETRY TRANSACAO ${attempt}/${retries}] Retentando transação de salvar sermão... (${e.message})`);
+                await new Promise(res => setTimeout(res, 1500));
+            } else {
                 console.error('[ERRO] Falha ao salvar sermão gerado:', e);
                 throw e;
             }
-            console.warn(`[DB RETRY] Retentando transação de salvar sermão... (${e.message})`);
-            await new Promise(res => setTimeout(res, 1000));
         } finally {
             if (client) client.release();
         }
