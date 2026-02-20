@@ -97,12 +97,15 @@ if (vapidPublicKey && vapidPrivateKey && vapidMailto) {
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/healthz", async (req, res) => {
     try {
-        // Dá um "ping" no banco de dados. Isso impede que o Supabase feche as conexões por inatividade!
-        await pool.query('SELECT 1'); 
+        // Tenta manter a conexão do banco viva
+        await pool.query('SELECT 1');
         res.status(200).send("OK");
     } catch (error) {
-        console.error("[HEALTHCHECK ERROR] Falha ao pingar o banco de dados:", error.message);
-        res.status(500).send("Erro de DB");
+        // Se o banco falhar, a gente loga o erro, mas NÃO devolve 500 para o Render
+        console.error("[HEALTHCHECK WARNING] Falha rápida no DB, mas o Node segue vivo:", error.message);
+        
+        // Retorna 200 para impedir que o Render reinicie a aplicação inteira à toa!
+        res.status(200).send("Node Vivo, aguardando DB");
     }
 });
 app.use(express.urlencoded({ extended: true }));
