@@ -1,23 +1,25 @@
-// db.js - Versão de Diagnóstico e Produção com Schema Canônico
+// db.js - Versão de Diagnóstico e Produção com Schema Canônico e Pool Resiliente
 
 const { Pool } = require('pg');
 
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Configurações de Pool ajustadas para Supabase Transaction Mode (Porta 6543 no DATABASE_URL)
+// Configurações de Pool SUPER RESILIENTES (Prevenção de Conexões Zumbis e Travamentos)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isProduction ? { rejectUnauthorized: false } : false,
-  connectionTimeoutMillis: 30000, // AUMENTADO PARA 30s: Tempo suficiente para a inicialização no Render
-  idleTimeoutMillis: 30000,       // AUMENTADO PARA 30s
-  max: 10,                        // Pool max entre 5 e 10
+  max: 15,                        // Aumentado para lidar com picos de usuários
+  idleTimeoutMillis: 5000,        // O Node mata conexões ociosas em 5s (antes do Supabase/PgBouncer)
+  connectionTimeoutMillis: 10000, // Falha rápido (10s) se o banco estiver inacessível
+  keepAlive: true                 // Envia pulsos TCP para manter a conexão ativa contra firewalls
 });
 
 // ===================================================================
 // TRATAMENTO DE ERROS DO POOL
 // ===================================================================
-pool.on('error', (err) => {
-  console.error('[ERRO NO POOL DE CONEXÕES PG]', err);
+// Isso impede que a aplicação inteira caia se uma conexão ociosa for derrubada pelo servidor
+pool.on('error', (err, client) => {
+  console.error('[ERRO NO POOL DE CONEXÕES PG - IGNORADO PELO SISTEMA]', err.message);
 });
 
 /**
@@ -74,7 +76,6 @@ pool.on('error', (err) => {
     await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS saved BOOLEAN DEFAULT false;`);
     
     // CORREÇÃO DE PERFORMANCE: Trava de segurança para evitar Table Lock no boot do Render
-    // Só executa o UPDATE pesado se a coluna ainda aceitar valores nulos (ou seja, se a migração nunca foi feita)
     const checkNullQuery = await client.query(`
         SELECT is_nullable 
         FROM information_schema.columns 
