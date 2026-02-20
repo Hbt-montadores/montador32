@@ -8,7 +8,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isProduction ? { rejectUnauthorized: false } : false,
-  connectionTimeoutMillis: 30000, // AUMENTADO PARA 30s: Dá tempo suficiente para a inicialização no Render
+  connectionTimeoutMillis: 30000, // AUMENTADO PARA 30s: Tempo suficiente para a inicialização no Render
   idleTimeoutMillis: 30000,       // AUMENTADO PARA 30s
   max: 10,                        // Pool max entre 5 e 10
 });
