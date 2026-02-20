@@ -9,7 +9,7 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isProduction ? { rejectUnauthorized: false } : false,
   connectionTimeoutMillis: 15000, // 15 segundos para conectar
-  idleTimeoutMillis: 60000,       // Voltamos para 60s para evitar sobrecarga de recriação de conexões
+  idleTimeoutMillis: 1000,       // Voltamos para 60s para evitar sobrecarga de recriação de conexões
   max: 15,                        // Aumentado levemente para suportar picos de usuários
   keepAlive: true,                // A MÁGICA: Mantém a conexão ativa com "pings" de sistema
 });
