@@ -1,155 +1,165 @@
-// db.js - Versão de Diagnóstico e Produção com Schema Canônico
+// db.js - Versão de Diagnóstico e Produção com Schema Canônico e Retry
 
 const { Pool } = require('pg');
 
 const isProduction = process.env.NODE_ENV === 'production';
 
 // ===================================================================
-// CONFIGURAÇÃO SUPER RESILIENTE DO POOL (Prevenção de Conexões Zumbis)
+// CONFIGURAÇÃO SUPER RESILIENTE DO POOL
 // ===================================================================
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isProduction ? { rejectUnauthorized: false } : false,
   max: 15,                        // Aumentado para lidar com picos de usuários simultâneos
-  idleTimeoutMillis: 5000,        // MUDANÇA CRÍTICA: Mata conexões ociosas em 5s (antes do Supabase/PgBouncer cortar)
-  connectionTimeoutMillis: 10000, // Falha rápido (10s) se o banco estiver inacessível, evitando travar a tela
-  keepAlive: true                 // Envia pulsos TCP para manter a conexão ativa contra firewalls rígidos
+  idleTimeoutMillis: 5000,        // MATA ZUMBIS: 5s é perfeito para evitar conexões presas
+  connectionTimeoutMillis: 30000, // BOOT SEGURO: 30s dá tempo de sobra para o Supabase responder na hora de ligar
+  keepAlive: true                 // Envia pulsos TCP para manter a conexão ativa
 });
 
-// Tratamento de erros do Pool: Evita que "erros de fundo" derrubem o servidor inteiro
+// Tratamento de erros do Pool: Evita que "erros de fundo" derrubem o servidor
 pool.on('error', (err, client) => {
   console.error('[ERRO NO POOL DE CONEXÕES PG - IGNORADO PELO SISTEMA]', err.message);
 });
 
 /**
- * Inicialização e migração do banco de dados com Schema Canônico.
+ * Inicialização e migração do banco de dados com Retry Automático
  */
 (async () => {
-  let client;
-  try {
-    client = await pool.connect();
-    console.log('Verificando e preparando o banco de dados (Schema Canônico)...');
+  let retries = 3; // Tenta ligar até 3 vezes se a nuvem estiver lenta
 
-    // --- Tabela 'customers' ---
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS customers (
-        id SERIAL PRIMARY KEY,
-        email TEXT UNIQUE NOT NULL,
-        name TEXT,
-        phone TEXT,
-        monthly_status TEXT,
-        annual_expires_at TIMESTAMP WITH TIME ZONE,
-        grace_sermons_used INT DEFAULT 0,
-        grace_period_month TEXT,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-        last_invoice_id TEXT,
-        last_product_id TEXT,
-        last_generated_at TIMESTAMP WITH TIME ZONE
-      );
-    `);
+  while (retries > 0) {
+    let client;
+    try {
+      client = await pool.connect();
+      console.log('Verificando e preparando o banco de dados (Schema Canônico)...');
 
-    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_invoice_id TEXT;`);
-    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_product_id TEXT;`);
-    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_generated_at TIMESTAMP WITH TIME ZONE;`);
-    
-    console.log('✔️ Tabela "customers" pronta.');
+      // --- Tabela 'customers' ---
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS customers (
+          id SERIAL PRIMARY KEY,
+          email TEXT UNIQUE NOT NULL,
+          name TEXT,
+          phone TEXT,
+          monthly_status TEXT,
+          annual_expires_at TIMESTAMP WITH TIME ZONE,
+          grace_sermons_used INT DEFAULT 0,
+          grace_period_month TEXT,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          last_invoice_id TEXT,
+          last_product_id TEXT,
+          last_generated_at TIMESTAMP WITH TIME ZONE
+        );
+      `);
 
-    // --- Tabela 'sermons' (Padronizada) ---
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS sermons (
-        id SERIAL PRIMARY KEY,
-        user_email TEXT NOT NULL,
-        topic TEXT NOT NULL,
-        topic_normalized TEXT NOT NULL,
-        audience TEXT NOT NULL,
-        sermon_type TEXT NOT NULL,
-        duration TEXT NOT NULL,
-        content TEXT NOT NULL,
-        saved BOOLEAN NOT NULL DEFAULT false,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-      );
-    `);
-    
-    // Migrações para garantir que colunas antigas ou faltando sejam ajustadas
-    await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS topic_normalized TEXT;`);
-    
-    // CORREÇÃO DE PERFORMANCE: Trava de segurança para evitar Table Lock no boot do Render
-    // Só executa o UPDATE pesado se a coluna ainda aceitar valores nulos (ou seja, se a migração nunca foi feita)
-    const checkNullQuery = await client.query(`
-        SELECT is_nullable 
-        FROM information_schema.columns 
-        WHERE table_name = 'sermons' AND column_name = 'topic_normalized';
-    `);
-    
-    if (checkNullQuery.rows.length > 0 && checkNullQuery.rows[0].is_nullable === 'YES') {
-        console.log('Executando migração de dados pendentes na tabela sermons...');
-        await client.query(`UPDATE sermons SET topic_normalized = LOWER(topic) WHERE topic_normalized IS NULL;`);
-        await client.query(`ALTER TABLE sermons ALTER COLUMN topic SET NOT NULL;`);
-        await client.query(`ALTER TABLE sermons ALTER COLUMN topic_normalized SET NOT NULL;`);
+      await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_invoice_id TEXT;`);
+      await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_product_id TEXT;`);
+      await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_generated_at TIMESTAMP WITH TIME ZONE;`);
+      
+      console.log('✔️ Tabela "customers" pronta.');
+
+      // --- Tabela 'sermons' (Padronizada) ---
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS sermons (
+          id SERIAL PRIMARY KEY,
+          user_email TEXT NOT NULL,
+          topic TEXT NOT NULL,
+          topic_normalized TEXT NOT NULL,
+          audience TEXT NOT NULL,
+          sermon_type TEXT NOT NULL,
+          duration TEXT NOT NULL,
+          content TEXT NOT NULL,
+          saved BOOLEAN NOT NULL DEFAULT false,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+      `);
+      
+      // Migrações para garantir que colunas antigas ou faltando sejam ajustadas
+      await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS topic_normalized TEXT;`);
+      
+      // CORREÇÃO DE PERFORMANCE: Trava de segurança para evitar Table Lock no boot do Render
+      const checkNullQuery = await client.query(`
+          SELECT is_nullable 
+          FROM information_schema.columns 
+          WHERE table_name = 'sermons' AND column_name = 'topic_normalized';
+      `);
+      
+      if (checkNullQuery.rows.length > 0 && checkNullQuery.rows[0].is_nullable === 'YES') {
+          console.log('Executando migração de dados pendentes na tabela sermons...');
+          await client.query(`UPDATE sermons SET topic_normalized = LOWER(topic) WHERE topic_normalized IS NULL;`);
+          await client.query(`ALTER TABLE sermons ALTER COLUMN topic SET NOT NULL;`);
+          await client.query(`ALTER TABLE sermons ALTER COLUMN topic_normalized SET NOT NULL;`);
+      }
+
+      await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS saved BOOLEAN DEFAULT false;`);
+
+      // Índices otimizados para Cache e Histórico
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_sermons_cache_composite 
+        ON sermons (topic_normalized, audience, sermon_type, duration);
+      `);
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_sermons_user_history
+        ON sermons (user_email, created_at DESC);
+      `);
+      
+      console.log('✔️ Tabela "sermons" pronta e migrada.');
+
+      // --- Tabela 'access_control' ---
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS access_control (
+          id SERIAL PRIMARY KEY,
+          email TEXT UNIQUE NOT NULL,
+          permission TEXT NOT NULL CHECK (permission IN ('allow', 'block', 'canceled')),
+          reason TEXT,
+          invoice_id TEXT,
+          product_id TEXT,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+      `);
+      console.log('✔️ Tabela "access_control" pronta.');
+
+      // --- Tabela 'activity_log' ---
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS activity_log (
+          id SERIAL PRIMARY KEY,
+          user_email TEXT NOT NULL,
+          sermon_topic TEXT,
+          sermon_audience TEXT,
+          sermon_type TEXT,
+          sermon_duration TEXT,
+          model_used TEXT,
+          prompt_instruction TEXT,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+      `);
+      console.log('✔️ Tabela "activity_log" pronta.');
+
+      // --- Tabela 'user_sessions' ---
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "user_sessions" (
+          "sid" varchar NOT NULL COLLATE "default", "sess" json NOT NULL, "expire" timestamp(6) NOT NULL
+        ) WITH (OIDS=FALSE);
+        DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'session_pkey' AND conrelid = 'user_sessions'::regclass) THEN
+        ALTER TABLE "user_sessions" ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE;
+        END IF; END; $$;
+        CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "user_sessions" ("expire");
+      `);
+      console.log('✔️ Tabela "user_sessions" pronta.');
+
+      console.log('✅ Banco de dados inicializado com sucesso.');
+      break; // Sucesso! Sai do loop de tentativas.
+
+    } catch (err) {
+      console.error(`❌ Erro ao inicializar o banco de dados. Tentativas restantes: ${retries - 1}. Motivo:`, err.message);
+      retries--;
+      if (retries === 0) {
+        console.error('❌ Desistindo de inicializar o DB. Verifique a URL do banco ou status do Supabase.');
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 3000)); // Espera 3 segundos antes de tentar de novo
+      }
+    } finally {
+      if (client) client.release(); // Sempre libera o client, dê sucesso ou erro
     }
-
-    await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS saved BOOLEAN DEFAULT false;`);
-
-    // Índices otimizados para Cache e Histórico
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_sermons_cache_composite 
-      ON sermons (topic_normalized, audience, sermon_type, duration);
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_sermons_user_history
-      ON sermons (user_email, created_at DESC);
-    `);
-    
-    console.log('✔️ Tabela "sermons" pronta e migrada.');
-
-    // --- Tabela 'access_control' ---
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS access_control (
-        id SERIAL PRIMARY KEY,
-        email TEXT UNIQUE NOT NULL,
-        permission TEXT NOT NULL CHECK (permission IN ('allow', 'block', 'canceled')),
-        reason TEXT,
-        invoice_id TEXT,
-        product_id TEXT,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-      );
-    `);
-    console.log('✔️ Tabela "access_control" pronta.');
-
-    // --- Tabela 'activity_log' ---
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS activity_log (
-        id SERIAL PRIMARY KEY,
-        user_email TEXT NOT NULL,
-        sermon_topic TEXT,
-        sermon_audience TEXT,
-        sermon_type TEXT,
-        sermon_duration TEXT,
-        model_used TEXT,
-        prompt_instruction TEXT,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-      );
-    `);
-    console.log('✔️ Tabela "activity_log" pronta.');
-
-    // --- Tabela 'user_sessions' ---
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS "user_sessions" (
-        "sid" varchar NOT NULL COLLATE "default", "sess" json NOT NULL, "expire" timestamp(6) NOT NULL
-      ) WITH (OIDS=FALSE);
-      DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'session_pkey' AND conrelid = 'user_sessions'::regclass) THEN
-      ALTER TABLE "user_sessions" ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE;
-      END IF; END; $$;
-      CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "user_sessions" ("expire");
-    `);
-    console.log('✔️ Tabela "user_sessions" pronta.');
-
-    console.log('✅ Banco de dados pronto para uso.');
-
-  } catch (err) {
-    console.error('❌ Erro ao inicializar o banco de dados:', err);
-  } finally {
-    if (client) client.release();
   }
 })();
 
