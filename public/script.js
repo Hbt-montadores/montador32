@@ -204,22 +204,6 @@ function nextStep(response) {
   });
 }
 
-function displayQuestion(data) {
-  elements.question.innerText = data.question;
-  elements.inputArea.style.display = 'none';
-  
-  elements.options.innerHTML = ''; 
-  data.options.forEach(option => {
-    const button = document.createElement('button');
-    button.className = 'option-button';
-    button.innerText = option;
-    button.onclick = () => nextStep(option);
-    elements.options.appendChild(button);
-  });
-  elements.options.style.display = 'block';
-  elements.stepContainer.style.display = 'block';
-}
-
 function generateSermon(userResponse) {
   elements.stepContainer.style.display = 'none';
   showLoading();
@@ -235,7 +219,14 @@ function generateSermon(userResponse) {
   })
   .then(data => {
       hideLoading();
-      if (data.sermon) {
+      
+      // Nova Lógica de Redirecionamento Blindado
+      if (data.redirect) {
+          // Em vez de mudar o window.location (que daria erro 404 em uma SPA), 
+          // simulamos o clique no botão chamando a função que renderiza a lista.
+          fetchMySermons();
+      } else if (data.sermon) {
+          // Mantido para quando for Cache Hit (sermão idêntico)
           displayGeneratedSermon(data);
       } else { 
           throw new Error('Resposta final inválida do servidor.'); 
