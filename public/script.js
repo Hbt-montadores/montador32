@@ -1,4 +1,4 @@
-// public/script.js - Versão Final e Completa (Correção da Etapa 1 e Histórico)
+// public/script.js - Versão Final e Completa (Correção da Etapa 1, Histórico e Cache)
 
 // ===================================================================
 // SEÇÃO 1: LOGGING DE ERROS DO CLIENTE E SERVICE WORKER
@@ -153,7 +153,6 @@ function handleFetchError(error, responseStatus) {
     elements.errorContainer.style.display = 'block';
 }
 
-// CORREÇÃO CRÍTICA: Esta era a função que estava faltando e travando a Etapa 1!
 function displayQuestion(data) {
     elements.question.innerText = data.question;
     elements.userInput.value = '';
@@ -221,7 +220,6 @@ function nextStep(response) {
     } else { throw new Error('Resposta inválida do servidor.'); }
   })
   .catch(errorObj => {
-      // Se não houver status, foi um erro de JS no frontend (ex: displayQuestion faltando antes)
       console.error("Erro capturado no NextStep:", errorObj);
       handleFetchError(errorObj.err || errorObj, errorObj.status || 500);
   });
@@ -375,13 +373,16 @@ function renderSermonList(sermons) {
 function displayGeneratedSermon(data) {
     elements.sermonsListContainer.style.display = 'none';
     
+    // Atualiza a variável global para exportação PDF
     sermonData.topic = data.topic || sermonData.topic || 'Sermão';
     
     const isSaved = data.saved || false;
     const btnColor = isSaved ? '#D32F2F' : '#4CAF50';
     const btnText = isSaved ? '❌ Remover dos Salvos' : '⭐ Salvar na minha Lista';
     
-    const formattedSermon = data.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+    // CORREÇÃO AQUI: Aceita data.content (do histórico) OU data.sermon (do Cache) de forma segura
+    const sermonText = data.content || data.sermon || "";
+    const formattedSermon = sermonText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
     
     elements.sermonResult.innerHTML = `
         <h2>${sermonData.topic}</h2>
