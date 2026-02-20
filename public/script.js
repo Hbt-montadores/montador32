@@ -1,4 +1,4 @@
-// public/script.js - Versão Final (Cooldown, Overlay e Histórico Completo)
+// public/script.js - Versão Final e Completa (Correção da Etapa 1 e Histórico)
 
 // ===================================================================
 // SEÇÃO 1: LOGGING DE ERROS DO CLIENTE E SERVICE WORKER
@@ -110,10 +110,8 @@ function showLoading() {
     elements.loadingOverlay.style.display = 'flex';
     let phraseIndex = 0;
     
-    // Mostra a primeira frase imediatamente
     elements.loadingPhrase.textContent = loadingPhrases[phraseIndex];
     
-    // Troca a frase a cada 5 segundos
     loadingInterval = setInterval(() => {
         phraseIndex = (phraseIndex + 1) % loadingPhrases.length;
         elements.loadingPhrase.textContent = loadingPhrases[phraseIndex];
@@ -134,28 +132,51 @@ function handleFetchError(error, responseStatus) {
     let errorHTML;
 
     if (responseStatus === 429) {
-        // Bloqueio de Cooldown (Exibe com layout amigável)
         errorHTML = `
             <h2>Atenção!</h2>
             <p style="font-size: 1.2em; color: #D32F2F; margin-bottom: 20px;">${error.message || 'Limite de acesso atingido.'}</p>
             <button onclick="startNewSermon()" style="background-color: #1565C0; color: white; padding: 15px 30px; border-radius: 8px; font-size: 1.2em; border: none; cursor: pointer; width: 100%; max-width: 300px; margin-top: 10px;">Entendido, vou aguardar</button>`;
     } else if (error && error.renewal_url) {
-        // Assinatura Vencida / Limite de Cortesia
         errorHTML = `
             <h2>Acesso Expirado</h2>
             <p style="font-size: 1.2em; color: #D32F2F; margin-bottom: 20px;">${error.message}</p>
             <a href="${error.renewal_url}" target="_blank" style="background-color: #4CAF50; color: white; padding: 15px 30px; text-decoration: none; font-size: 1.5em; border-radius: 8px; display: inline-block; margin-top: 10px;">LIBERAR ACESSO</a>
             <br><br><button onclick="startNewSermon()" style="margin-top: 20px; border: none; background: transparent; color: #1565C0; text-decoration: underline; cursor: pointer;">Voltar ao Início</button>`;
     } else {
-        // Erro Genérico de Servidor
         errorHTML = `
             <h2>Não foi possível continuar</h2>
-            <p>Não foi possível continuar. Por favor, verifique sua conexão e tente novamente mais tarde.</p>
+            <p>Ocorreu um erro de conexão. Por favor, verifique sua internet e tente novamente.</p>
             <button onclick="startNewSermon()">Tentar novamente</button>`;
     }
 
     elements.errorContainer.innerHTML = errorHTML;
     elements.errorContainer.style.display = 'block';
+}
+
+// CORREÇÃO CRÍTICA: Esta era a função que estava faltando e travando a Etapa 1!
+function displayQuestion(data) {
+    elements.question.innerText = data.question;
+    elements.userInput.value = '';
+    
+    if (data.options && data.options.length > 0) {
+        elements.inputArea.style.display = 'none';
+        elements.options.innerHTML = '';
+        
+        data.options.forEach(option => {
+            const btn = document.createElement('button');
+            btn.className = 'option-button';
+            btn.innerText = option;
+            btn.onclick = () => nextStep(option);
+            elements.options.appendChild(btn);
+        });
+        
+        elements.options.style.display = 'block';
+    } else {
+        elements.inputArea.style.display = 'block';
+        elements.options.style.display = 'none';
+    }
+    
+    elements.stepContainer.style.display = 'block';
 }
 
 function nextStep(response) {
@@ -181,7 +202,7 @@ function nextStep(response) {
   }
   
   elements.stepContainer.style.display = 'none';
-  showLoading(); // Aqui ainda é só mudança de passo interno, mas mantemos visual limpo
+  showLoading();
 
   fetch('/api/next-step', {
     method: 'POST',
@@ -200,7 +221,9 @@ function nextStep(response) {
     } else { throw new Error('Resposta inválida do servidor.'); }
   })
   .catch(errorObj => {
-      handleFetchError(errorObj.err || errorObj, errorObj.status);
+      // Se não houver status, foi um erro de JS no frontend (ex: displayQuestion faltando antes)
+      console.error("Erro capturado no NextStep:", errorObj);
+      handleFetchError(errorObj.err || errorObj, errorObj.status || 500);
   });
 }
 
@@ -220,14 +243,13 @@ function generateSermon(userResponse) {
   .then(data => {
       hideLoading();
       
-      // Nova Lógica de Redirecionamento Blindado
-      if (data.redirect) {
-          // Em vez de mudar o window.location (que daria erro 404 em uma SPA), 
-          // simulamos o clique no botão chamando a função que renderiza a lista.
-          fetchMySermons();
-      } else if (data.sermon) {
-          // Mantido para quando for Cache Hit (sermão idêntico)
+      // Avalia a resposta para saber se mostra o sermão na tela ou vai pra lista
+      if (data.sermon) {
+          // Se for cache ou vier direto do server, mostra o sermão
           displayGeneratedSermon(data);
+      } else if (data.redirect) {
+          // Se a API pediu redirect limpo (novo sermão gerado com sucesso)
+          fetchMySermons();
       } else { 
           throw new Error('Resposta final inválida do servidor.'); 
       }
@@ -276,7 +298,6 @@ function toggleSaveSermon(id, currentlySaved, buttonElement) {
     const endpoint = currentlySaved ? `/api/sermon/${id}` : '/api/sermon/save';
     const method = currentlySaved ? 'DELETE' : 'POST';
 
-    // UI Otimista: muda antes do servidor responder
     buttonElement.disabled = true;
     buttonElement.innerText = "Atualizando...";
 
@@ -288,7 +309,6 @@ function toggleSaveSermon(id, currentlySaved, buttonElement) {
     .then(res => res.json())
     .then(data => {
         if (data.success) {
-            // Se foi sucesso, atualiza a lista inteira para refletir a mudança
             fetchMySermons();
         } else {
             alert("Erro ao atualizar o status do sermão.");
@@ -318,7 +338,6 @@ function renderSermonList(sermons) {
             
             let badgeHTML = sermon.saved ? `<span class="saved-badge">★ Salvo</span>` : '';
             
-            // Botão de Salvar/Remover
             const btnColor = sermon.saved ? '#D32F2F' : '#4CAF50';
             const btnText = sermon.saved ? '❌ Remover' : '⭐ Salvar';
 
@@ -333,7 +352,6 @@ function renderSermonList(sermons) {
                 </div>
             `;
             
-            // Lógica dos botões na lista
             const btnView = item.querySelector('.action-btn-view');
             const btnSave = item.querySelector('.action-btn-save');
 
@@ -357,14 +375,12 @@ function renderSermonList(sermons) {
 function displayGeneratedSermon(data) {
     elements.sermonsListContainer.style.display = 'none';
     
-    // Atualiza a variável global para exportação PDF
     sermonData.topic = data.topic || sermonData.topic || 'Sermão';
     
     const isSaved = data.saved || false;
     const btnColor = isSaved ? '#D32F2F' : '#4CAF50';
     const btnText = isSaved ? '❌ Remover dos Salvos' : '⭐ Salvar na minha Lista';
     
-    // Formatação Markdown para HTML
     const formattedSermon = data.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
     
     elements.sermonResult.innerHTML = `
@@ -397,7 +413,6 @@ function displayGeneratedSermon(data) {
             .then(res => res.json())
             .then(resData => {
                 if (resData.success) {
-                    // Atualiza a tela recarregando o próprio objeto com o novo status
                     data.saved = !isSaved;
                     displayGeneratedSermon(data); 
                 } else {
@@ -411,7 +426,6 @@ function displayGeneratedSermon(data) {
             });
         };
     } else if (!data.id) {
-        // Se não tiver ID (caso muito raro por erro de retorno), esconde o botão
         toggleSaveBtn.style.display = 'none';
     }
 }
