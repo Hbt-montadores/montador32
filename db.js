@@ -71,13 +71,22 @@ pool.on('error', (err) => {
     
     // Migrações para garantir que colunas antigas ou faltando sejam ajustadas
     await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS topic_normalized TEXT;`);
-    
-    // CORREÇÃO: Preenche os sermões antigos antes de aplicar a trava de segurança para evitar o erro "contains null values"
-    await client.query(`UPDATE sermons SET topic_normalized = LOWER(topic) WHERE topic_normalized IS NULL;`);
-    
-    await client.query(`ALTER TABLE sermons ALTER COLUMN topic SET NOT NULL;`);
-    await client.query(`ALTER TABLE sermons ALTER COLUMN topic_normalized SET NOT NULL;`);
     await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS saved BOOLEAN DEFAULT false;`);
+    
+    // CORREÇÃO DE PERFORMANCE: Trava de segurança para evitar Table Lock no boot do Render
+    // Só executa o UPDATE pesado se a coluna ainda aceitar valores nulos (ou seja, se a migração nunca foi feita)
+    const checkNullQuery = await client.query(`
+        SELECT is_nullable 
+        FROM information_schema.columns 
+        WHERE table_name = 'sermons' AND column_name = 'topic_normalized';
+    `);
+    
+    if (checkNullQuery.rows.length > 0 && checkNullQuery.rows[0].is_nullable === 'YES') {
+        console.log('Executando migração de dados pendentes na tabela sermons...');
+        await client.query(`UPDATE sermons SET topic_normalized = LOWER(topic) WHERE topic_normalized IS NULL;`);
+        await client.query(`ALTER TABLE sermons ALTER COLUMN topic SET NOT NULL;`);
+        await client.query(`ALTER TABLE sermons ALTER COLUMN topic_normalized SET NOT NULL;`);
+    }
 
     // Índices otimizados para Cache e Histórico
     await client.query(`
