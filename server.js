@@ -95,7 +95,16 @@ if (vapidPublicKey && vapidPrivateKey && vapidMailto) {
 
 // Middlewares (Segurança, JSON, Sessão)
 app.use(express.static(path.join(__dirname, "public")));
-app.get("/healthz", (req, res) => res.status(200).send("OK"));
+app.get("/healthz", async (req, res) => {
+    try {
+        // Dá um "ping" no banco de dados. Isso impede que o Supabase feche as conexões por inatividade!
+        await pool.query('SELECT 1'); 
+        res.status(200).send("OK");
+    } catch (error) {
+        console.error("[HEALTHCHECK ERROR] Falha ao pingar o banco de dados:", error.message);
+        res.status(500).send("Erro de DB");
+    }
+});
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
