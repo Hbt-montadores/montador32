@@ -8,8 +8,8 @@ const isProduction = process.env.NODE_ENV === 'production';
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isProduction ? { rejectUnauthorized: false } : false,
-  connectionTimeoutMillis: 10000, // Tempo de espera >= 10s
-  idleTimeoutMillis: 10000,      
+  connectionTimeoutMillis: 30000, // AUMENTADO PARA 30s: Dá tempo suficiente para a inicialização no Render
+  idleTimeoutMillis: 30000,       // AUMENTADO PARA 30s
   max: 10,                        // Pool max entre 5 e 10
 });
 
@@ -71,6 +71,10 @@ pool.on('error', (err) => {
     
     // Migrações para garantir que colunas antigas ou faltando sejam ajustadas
     await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS topic_normalized TEXT;`);
+    
+    // CORREÇÃO: Preenche os sermões antigos antes de aplicar a trava de segurança para evitar o erro "contains null values"
+    await client.query(`UPDATE sermons SET topic_normalized = LOWER(topic) WHERE topic_normalized IS NULL;`);
+    
     await client.query(`ALTER TABLE sermons ALTER COLUMN topic SET NOT NULL;`);
     await client.query(`ALTER TABLE sermons ALTER COLUMN topic_normalized SET NOT NULL;`);
     await client.query(`ALTER TABLE sermons ADD COLUMN IF NOT EXISTS saved BOOLEAN DEFAULT false;`);
