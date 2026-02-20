@@ -107,11 +107,11 @@ const loginLimiter = rateLimit({
     legacyHeaders: false,
 });
 
-// Configuração do Store de Sessão utilizando o padrão MemoryStore (Livramos o Supabase disso)
+// CORREÇÃO: resave alterado para true para garantir que a Etapa 1 não perca os dados em ambientes Serverless/Render
 app.use(
   session({
     secret: process.env.SESSION_SECRET,
-    resave: false,
+    resave: true, 
     saveUninitialized: false,
     cookie: { 
         maxAge: 30 * 24 * 60 * 60 * 1000, 
@@ -900,6 +900,7 @@ async function fetchWithTimeout(url, options, timeout = 90000) {
     });
 }
 
+// CORREÇÃO CRÍTICA NESTE BLOCO: Adicionado requisição de save() para cada passo da sessão.
 app.post("/api/next-step", requireLogin, async (req, res) => {
     const { userResponse } = req.body;
     const step = req.body.step || 1;
@@ -909,20 +910,32 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
     try {
         if (step === 1) {
             req.session.sermonData = { topic: userResponse };
-            return res.json({ question: "Para qual público você vai pregar?", options: ["A) Crianças", "B) Adolescentes", "C) Jovens", "D) Mulheres", "E) Homens", "F) Público misto", "G) Não convertido"], step: 2 });
+            return req.session.save((err) => {
+                if(err) console.error("Erro ao salvar sessão na etapa 1", err);
+                res.json({ question: "Para qual público você vai pregar?", options: ["A) Crianças", "B) Adolescentes", "C) Jovens", "D) Mulheres", "E) Homens", "F) Público misto", "G) Não convertido"], step: 2 });
+            });
         }
         if (step === 2) {
             req.session.sermonData.audience = userResponse;
-            return res.json({ question: "Qual tipo de sermão você vai pregar?", options: ["A) Expositivo", "B) Textual", "C) Temático"], step: 3 });
+            return req.session.save((err) => {
+                if(err) console.error("Erro ao salvar sessão na etapa 2", err);
+                res.json({ question: "Qual tipo de sermão você vai pregar?", options: ["A) Expositivo", "B) Textual", "C) Temático"], step: 3 });
+            });
         }
         if (step === 3) {
             req.session.sermonData.sermonType = userResponse;
-            return res.json({ question: "Quantos minutos o sermão deve durar?", options: ["Entre 1 e 10 min", "Entre 10 e 20 min", "Entre 20 e 30 min", "Entre 30 e 40 min", "Entre 40 e 50 min", "Entre 50 e 60 min", "Acima de 1 hora"], step: 4 });
+            return req.session.save((err) => {
+                if(err) console.error("Erro ao salvar sessão na etapa 3", err);
+                res.json({ question: "Quantos minutos o sermão deve durar?", options: ["Entre 1 e 10 min", "Entre 10 e 20 min", "Entre 20 e 30 min", "Entre 30 e 40 min", "Entre 40 e 50 min", "Entre 50 e 60 min", "Acima de 1 hora"], step: 4 });
+            });
         }
         if (step === 4) {
+            if (!req.session.sermonData) {
+                req.session.sermonData = {};
+            }
             req.session.sermonData.duration = userResponse;
             
-            // --- a) VALIDAÇÃO DEFENSIVA (ESSENCIAL PARA EVITAR O ERRO DE NULL) ---
+            // --- a) VALIDAÇÃO DEFENSIVA ---
             const { topic, audience, sermonType, duration } = req.session.sermonData;
             
             if (!topic || !audience || !sermonType || !duration) {
@@ -972,11 +985,14 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
             if (identicalSermon) {
                 console.log(`[Cache Hit] Retornando sermão idêntico salvo para ${req.session.user.email}.`);
                 delete req.session.sermonData;
-                return res.json({ 
-                    sermon: identicalSermon.content, 
-                    id: identicalSermon.id, 
-                    saved: identicalSermon.saved,
-                    is_cache: true 
+                return req.session.save(() => {
+                    res.json({ 
+                        sermon: identicalSermon.content, 
+                        id: identicalSermon.id, 
+                        saved: identicalSermon.saved,
+                        is_cache: true,
+                        redirect: "/meus-sermoes"
+                    });
                 });
             }
 
@@ -1034,11 +1050,7 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                     generatedContent
                 );
 
-                console.log(`[Etapa 4 - Diagnóstico] Preparando para enviar a resposta com redirecionamento para ${req.session.user.email}`);
-                res.status(200).json({ success: true, redirect: "/meus-sermoes" });
-                console.log(`[Etapa 4 - Diagnóstico] Resposta com redirecionamento enviada com sucesso para ${req.session.user.email}`);
-
-                // Tarefas secundárias blindadas com try/catch para não afetarem o fluxo se falharem.
+                // Tarefas secundárias blindadas
                 try {
                     await logSermonActivity({
                         user_email: req.session.user.email, sermon_topic: topic, sermon_audience: audience,
@@ -1048,11 +1060,14 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
                     console.error("[BACKEND WARNING] Falha ao registrar logSermonActivity (ignorado):", logErr);
                 }
 
-                try {
-                    delete req.session.sermonData;
-                } catch (sessErr) {
-                    console.error("[BACKEND WARNING] Falha ao limpar req.session.sermonData (ignorado):", sessErr);
-                }
+                delete req.session.sermonData;
+                
+                // CORREÇÃO CRÍTICA DE RETORNO DA ETAPA 4: Limpamos a sessão antes do Redirect para garantir consistência.
+                req.session.save(() => {
+                    console.log(`[Etapa 4 - Diagnóstico] Preparando para enviar a resposta com redirecionamento para ${req.session.user.email}`);
+                    res.status(200).json({ success: true, redirect: "/meus-sermoes" });
+                    console.log(`[Etapa 4 - Diagnóstico] Resposta com redirecionamento enviada com sucesso para ${req.session.user.email}`);
+                });
 
             } finally {
                 activeGenerations--;
