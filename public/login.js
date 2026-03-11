@@ -4,17 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- MUDANÇA: Título atualizado para 3.2 -->
-    <title>Login - Montador de Sermões 3.2</title>
+    <title>Login - Montador de Sermões 3.3</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <header>
         <!-- MUDANÇA: Texto alternativo do logo atualizado para 3.2 -->
-        <img src="https://cdn.glitch.global/db74bd9b-d683-421c-9223-f55b917c9dce/logo.png?v=1734385573934" alt="Logo do Montador de Sermões 3.2" class="logo">
+        <img src="https://drive.google.com/file/d/1Idu-zQLI7lrFHRQ377IGNwhR3_d7iS7M/view?usp=sharing" alt="Logo do Montador de Sermões 3.3" class="logo">
     </header>
 
     <!-- MUDANÇA: Título principal atualizado para 3.2 -->
-    <h1>Montador de Sermões 3.2</h1>
+    <h1>Montador de Sermões 3.3</h1>
 
     <div id="login-container">
         <!-- MUDANÇA: Todo o formulário foi reestruturado para e-mail -->
