@@ -197,7 +197,7 @@ const checkAccessAndLogin = async (req, res, customer) => {
         req.session.user = { email: customer.email, status: 'annual_paid' };
         return res.redirect('/welcome.html');
     }
-    if (customer.monthly_status === 'paid') {
+    if (isMonthlyAccessActive(customer, now)) {
         req.session.loginAttempts = 0;
         req.session.user = { email: customer.email, status: 'monthly_paid' };
         return res.redirect('/welcome.html');
@@ -220,6 +220,11 @@ const checkAccessAndLogin = async (req, res, customer) => {
     const overdueErrorMessageHTML = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pagamento Pendente</title><style>body{font-family:Arial,sans-serif;text-align:center;padding-top:50px;background-color:#E3F2FD;color:#0D47A1}.container{background-color:#fff;padding:30px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,.1);max-width:500px;margin:0 auto}h1{color:#D32F2F}p{font-size:1.2em;margin-bottom:20px}.action-button{background-color:#4CAF50;color:#fff;padding:15px 30px;font-size:1.5em;font-weight:700;border:none;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block;margin-top:10px;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:background-color .3s ease}.action-button:hover{background-color:#45a049}</style></head><body><div class="container"><h1>Atenção!</h1><p>Sua assinatura do Montador de Sermões venceu. Clique abaixo para voltar a ter acesso.</p><a href="https://casadopregador.com/pv/montador3anual" class="action-button" target="_blank">LIBERAR ACESSO</a></div></body></html>`;
     return res.status(401).send(overdueErrorMessageHTML);
 };
+
+function isMonthlyAccessActive(customer, now = new Date()) {
+    if (customer.monthly_status !== 'paid') return false;
+    return !customer.monthly_expires_at || now < new Date(customer.monthly_expires_at);
+}
 
 app.post("/login", loginLimiter, async (req, res) => {
     const { email } = req.body;
@@ -345,9 +350,13 @@ app.post("/eduzz/webhook", async (req, res) => {
              await updateMonthlyStatus(cus_email, cus_name, cus_cel, trans_cod, 'overdue');
              console.log(`[Webhook-Sucesso] Status MENSAL de [${cus_email}] atualizado para 'overdue' (contrato atrasado).`);
         }
-        else if (['contract_canceled', 'invoice_refunded', 'invoice_expired', 'invoice_chargeback'].includes(event_name)) {
+        else if (['contract_canceled', 'invoice_refunded', 'invoice_chargeback'].includes(event_name)) {
             await revokeAccessByInvoice(trans_cod, productType);
             console.log(`[Webhook-Sucesso] Acesso da fatura [${trans_cod}] revogado para [${cus_email}] devido a [${event_name}].`);
+        }
+        else if (event_name === 'invoice_expired') {
+            console.log(`[Webhook-Info] Fatura expirada ignorada para acesso: [${trans_cod}] de [${cus_email}].`);
+            return res.status(200).send("Fatura expirada ignorada para acesso.");
         }
         else {
             console.log(`[Webhook-Info] Ignorando evento não mapeado: ${event_name}`);
@@ -359,6 +368,108 @@ app.post("/eduzz/webhook", async (req, res) => {
         Sentry.captureException(error);
         console.error(`[Webhook-Erro] Falha ao processar webhook para [${cus_email}], evento [${event_name}].`, error);
         res.status(500).send("Erro interno ao processar o webhook.");
+    }
+});
+
+function parseCsvEnv(value, fallback = []) {
+    const raw = value || fallback.join(',');
+    return raw.split(',').map(item => item.trim()).filter(Boolean);
+}
+
+function normalizeAuthToken(value) {
+    return (value || '').replace(/^Bearer\s+/i, '').trim();
+}
+
+function getWiapyPayload(body) {
+    if (body && body.data && body.data.payment) return body.data;
+    return body || {};
+}
+
+function getWiapyPlanType(payload) {
+    const checkoutId = payload.checkout?.id?.toString();
+    const productId = payload.products?.[0]?.id?.toString();
+    const monthlyCheckoutIds = parseCsvEnv(process.env.WIAPY_MONTHLY_CHECKOUT_IDS, ['6a08bd2d95204c0a4a1b53b3']);
+    const annualCheckoutIds = parseCsvEnv(process.env.WIAPY_ANNUAL_CHECKOUT_IDS, ['6a08c6030d76d746bee75fcb']);
+    const lifetimeCheckoutIds = parseCsvEnv(process.env.WIAPY_LIFETIME_CHECKOUT_IDS);
+    const lifetimeProductIds = parseCsvEnv(process.env.WIAPY_LIFETIME_PRODUCT_IDS);
+
+    if (monthlyCheckoutIds.includes(checkoutId)) return 'monthly';
+    if (annualCheckoutIds.includes(checkoutId)) return 'annual';
+    if (lifetimeCheckoutIds.includes(checkoutId) || lifetimeProductIds.includes(productId)) return 'lifetime';
+    return null;
+}
+
+app.post("/wiapy/webhook", async (req, res) => {
+    const expectedToken = process.env.WIAPY_WEBHOOK_TOKEN;
+    if (!expectedToken) {
+        console.error("[Wiapy Webhook] WIAPY_WEBHOOK_TOKEN não configurado no ambiente.");
+        return res.status(500).send("Configuração do webhook incompleta.");
+    }
+
+    const receivedToken = normalizeAuthToken(req.get('authorization'));
+    if (receivedToken !== expectedToken) {
+        console.warn("[Wiapy Webhook] Token inválido recebido.");
+        return res.status(403).send("Token inválido.");
+    }
+
+    const payload = getWiapyPayload(req.body);
+    const payment = payload.payment || {};
+    const subscription = payload.subscription || {};
+    const customer = payload.customer || {};
+    const checkout = payload.checkout || {};
+    const productId = payload.products?.[0]?.id || checkout.id || null;
+
+    const email = customer.email;
+    const name = customer.name;
+    const phone = customer.mobile_phone;
+    const invoiceId = payment.id;
+    const subscriptionId = subscription.id || null;
+    const status = (payment.status || '').toString().toLowerCase();
+    const planType = getWiapyPlanType(payload);
+
+    if (!email || !invoiceId || !status || !checkout.id) {
+        console.warn("[Wiapy Webhook] Payload com dados essenciais faltando.", { email, invoiceId, status, checkoutId: checkout.id });
+        return res.status(400).send("Dados insuficientes.");
+    }
+
+    if (!planType) {
+        console.log(`[Wiapy Webhook] Checkout/produto não mapeado. Checkout [${checkout.id}], produto [${productId}].`);
+        return res.status(200).send("Webhook ignorado (plano não mapeado).");
+    }
+
+    try {
+        if (status === 'paid') {
+            if (planType === 'annual') {
+                await updateAnnualAccess(email, name, phone, invoiceId, payment.dt_update || payment.dt_create, {
+                    expiresAt: subscription.dt_end,
+                    productId,
+                    subscriptionId
+                });
+                console.log(`[Wiapy Webhook] Acesso ANUAL concedido/renovado para [${email}] via pagamento [${invoiceId}].`);
+            } else if (planType === 'monthly') {
+                await updateMonthlyStatus(email, name, phone, invoiceId, 'paid', {
+                    expiresAt: subscription.dt_end,
+                    subscriptionId
+                });
+                console.log(`[Wiapy Webhook] Acesso MENSAL atualizado para 'paid' para [${email}] via pagamento [${invoiceId}].`);
+            } else if (planType === 'lifetime') {
+                await updateLifetimeAccess(email, name, phone, invoiceId, productId);
+                console.log(`[Wiapy Webhook] Acesso VITALÍCIO concedido para [${email}] via pagamento [${invoiceId}].`);
+            }
+        } else if (['refunded', 'chargedback', 'chargeback'].includes(status)) {
+            await revokeAccessByInvoice(invoiceId, planType);
+            console.log(`[Wiapy Webhook] Acesso ${planType} revogado para [${email}] via status [${status}] no pagamento [${invoiceId}].`);
+        } else if (['unpaid', 'pending', 'credit_card_declined', 'declined', 'refused', 'failed'].includes(status)) {
+            console.log(`[Wiapy Webhook] Status [${status}] ignorado para acesso. Cliente [${email}], plano [${planType}], pagamento [${invoiceId}].`);
+        } else {
+            console.log(`[Wiapy Webhook] Status não mapeado [${status}] ignorado. Cliente [${email}], plano [${planType}].`);
+        }
+
+        return res.status(200).send("Webhook Wiapy processado.");
+    } catch (error) {
+        Sentry.captureException(error);
+        console.error(`[Wiapy Webhook] Falha ao processar webhook para [${email}], status [${status}].`, error);
+        return res.status(500).send("Erro interno ao processar o webhook.");
     }
 });
 
@@ -965,7 +1076,7 @@ app.post("/api/next-step", requireLogin, async (req, res) => {
 
             if (accessRule && accessRule.permission === 'allow') hasAccess = true;
             else if (customer.annual_expires_at && now < new Date(customer.annual_expires_at)) hasAccess = true;
-            else if (customer.monthly_status === 'paid') hasAccess = true;
+            else if (isMonthlyAccessActive(customer, now)) hasAccess = true;
 
             if (!hasAccess && req.session.user.status === 'grace_period') {
                 const graceSermonsLimit = parseInt(process.env.GRACE_PERIOD_SERMONS, 10) || 2;
