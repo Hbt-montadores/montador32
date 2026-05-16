@@ -81,6 +81,29 @@ async function dbQuery(queryText, params, retries = 3) {
     await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_invoice_id TEXT;`);
     await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_product_id TEXT;`);
     await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_generated_at TIMESTAMP WITH TIME ZONE;`);
+    await client.query(`
+      ALTER TABLE customers
+        ADD COLUMN IF NOT EXISTS annual_invoice_id TEXT,
+        ADD COLUMN IF NOT EXISTS annual_subscription_id TEXT,
+        ADD COLUMN IF NOT EXISTS monthly_invoice_id TEXT,
+        ADD COLUMN IF NOT EXISTS monthly_subscription_id TEXT,
+        ADD COLUMN IF NOT EXISTS monthly_expires_at TIMESTAMP WITH TIME ZONE;
+    `);
+    await client.query(`
+      UPDATE customers
+      SET annual_invoice_id = last_invoice_id
+      WHERE annual_invoice_id IS NULL
+        AND annual_expires_at IS NOT NULL
+        AND last_invoice_id IS NOT NULL;
+    `);
+    await client.query(`
+      UPDATE customers
+      SET monthly_invoice_id = last_invoice_id
+      WHERE monthly_invoice_id IS NULL
+        AND monthly_status IS NOT NULL
+        AND annual_expires_at IS NULL
+        AND last_invoice_id IS NOT NULL;
+    `);
     
     console.log('✔️ Tabela "customers" pronta.');
 
@@ -237,28 +260,62 @@ async function updateLifetimeAccess(email, name, phone, invoiceId, productId, re
     }
 }
 
-async function updateAnnualAccess(email, name, phone, invoiceId, paidAt) {
-    const expirationDate = new Date(paidAt);
-    expirationDate.setDate(expirationDate.getDate() + 365);
+async function updateAnnualAccess(email, name, phone, invoiceId, paidAt, options = {}) {
+    const baseDate = paidAt ? new Date(paidAt) : new Date();
+    const expirationDate = options.expiresAt ? new Date(options.expiresAt) : new Date(baseDate);
+    if (!options.expiresAt) {
+        expirationDate.setDate(expirationDate.getDate() + 365);
+    }
+    const productId = options.productId || null;
+    const subscriptionId = options.subscriptionId || null;
     await dbQuery(
-        `INSERT INTO customers (email, name, phone, annual_expires_at, last_invoice_id, updated_at) VALUES ($1, $2, $3, $4, $5, NOW())
-         ON CONFLICT (email) DO UPDATE SET name = COALESCE(EXCLUDED.name, customers.name), phone = COALESCE(EXCLUDED.phone, customers.phone), annual_expires_at = EXCLUDED.annual_expires_at, last_invoice_id = EXCLUDED.last_invoice_id, updated_at = NOW()`,
-        [email.toLowerCase(), name, phone, expirationDate.toISOString(), invoiceId]
+        `INSERT INTO customers (email, name, phone, annual_expires_at, last_invoice_id, last_product_id, annual_invoice_id, annual_subscription_id, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $5, $7, NOW())
+         ON CONFLICT (email) DO UPDATE SET
+            name = COALESCE(EXCLUDED.name, customers.name),
+            phone = COALESCE(EXCLUDED.phone, customers.phone),
+            annual_expires_at = EXCLUDED.annual_expires_at,
+            last_invoice_id = EXCLUDED.last_invoice_id,
+            last_product_id = COALESCE(EXCLUDED.last_product_id, customers.last_product_id),
+            annual_invoice_id = EXCLUDED.annual_invoice_id,
+            annual_subscription_id = COALESCE(EXCLUDED.annual_subscription_id, customers.annual_subscription_id),
+            updated_at = NOW()`,
+        [email.toLowerCase(), name, phone, expirationDate.toISOString(), invoiceId, productId, subscriptionId]
     );
 }
 
-async function updateMonthlyStatus(email, name, phone, invoiceId, status) {
+async function updateMonthlyStatus(email, name, phone, invoiceId, status, options = {}) {
+    const subscriptionId = options.subscriptionId || null;
+    const expiresAt = options.expiresAt ? new Date(options.expiresAt).toISOString() : null;
     await dbQuery(
-        `INSERT INTO customers (email, name, phone, monthly_status, last_invoice_id, updated_at) VALUES ($1, $2, $3, $4, $5, NOW())
-         ON CONFLICT (email) DO UPDATE SET name = COALESCE(EXCLUDED.name, customers.name), phone = COALESCE(EXCLUDED.phone, customers.phone), monthly_status = EXCLUDED.monthly_status, last_invoice_id = EXCLUDED.last_invoice_id, updated_at = NOW()`,
-        [email.toLowerCase(), name, phone, status, invoiceId]
+        `INSERT INTO customers (email, name, phone, monthly_status, last_invoice_id, monthly_invoice_id, monthly_subscription_id, monthly_expires_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, NOW())
+         ON CONFLICT (email) DO UPDATE SET
+            name = COALESCE(EXCLUDED.name, customers.name),
+            phone = COALESCE(EXCLUDED.phone, customers.phone),
+            monthly_status = EXCLUDED.monthly_status,
+            last_invoice_id = EXCLUDED.last_invoice_id,
+            monthly_invoice_id = EXCLUDED.monthly_invoice_id,
+            monthly_subscription_id = COALESCE(EXCLUDED.monthly_subscription_id, customers.monthly_subscription_id),
+            monthly_expires_at = COALESCE(EXCLUDED.monthly_expires_at, customers.monthly_expires_at),
+            updated_at = NOW()`,
+        [email.toLowerCase(), name, phone, status, invoiceId, subscriptionId, expiresAt]
     );
 }
 
 async function revokeAccessByInvoice(invoiceId, productType) {
-    if (productType === 'annual' || productType === 'monthly') {
+    if (productType === 'annual') {
         await dbQuery(
-            `UPDATE customers SET annual_expires_at = NULL, monthly_status = 'canceled', updated_at = NOW() WHERE last_invoice_id = $1`,
+            `UPDATE customers
+             SET annual_expires_at = NULL, updated_at = NOW()
+             WHERE annual_invoice_id = $1 OR (annual_invoice_id IS NULL AND last_invoice_id = $1)`,
+            [invoiceId]
+        );
+    } else if (productType === 'monthly') {
+        await dbQuery(
+            `UPDATE customers
+             SET monthly_status = 'canceled', monthly_expires_at = NULL, updated_at = NOW()
+             WHERE monthly_invoice_id = $1 OR (monthly_invoice_id IS NULL AND last_invoice_id = $1)`,
             [invoiceId]
         );
     } else if (productType === 'lifetime') {
